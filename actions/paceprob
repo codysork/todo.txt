@@ -35,10 +35,6 @@ PRIOR_BETA = 1.0
 # [pace * d * (1 - tol), pace * d * (1 + tol)].
 DEFAULT_TOL = 0.20
 
-# Safety cap on the band width summed over; the negative-binomial tail is
-# negligible beyond it.
-MAX_BAND = 100000
-
 HELP_WORDS = ("usage", "help", "-h", "--help")
 
 #----------------------------------------------------------------------------
@@ -123,42 +119,24 @@ def posterior(total, span):
     return alpha, beta
 
 
-def maintained_prob(alpha, beta, days, pace, tol):
-    """P(realized effort over `days` is within the band of `pace`).
+def maintained_prob(alpha, beta, days, pace):
+    """Probability that the realized effort over `days` meets the target pace.
 
-    Realized effort V given rate lambda is Poisson(days * lambda); with
-    lambda ~ Gamma(alpha, beta) the marginal of V is a negative binomial:
-        P(V = v) = C(alpha + v - 1, v) * A^alpha * (1 - A)^v,
-        A = beta / (beta + days),  (1 - A) = days / (beta + days)
-    so P(V = v) = exp(lgamma(alpha + v) - lgamma(alpha) - lgamma(v + 1)
-                      + alpha * log(A) + v * log(B)).
+    The realized effort is modeled as normal with
+        mean = days * alpha / beta           (posterior mean daily rate x days)
+        sd   = sqrt(days * alpha / beta + days**2 * alpha / beta**2)
+    (the variance of the negative-binomial marginal of the Poisson-Gamma
+    model).  Maintaining a pace of `pace` means realizing at least the
+    target; with a lower target the event is easier, so the probability
+    grows as the pace drops.  A target of 0 or less is met for sure.
     """
     target = pace * days
-    lo = math.ceil(target * (1.0 - tol))
-    hi = math.floor(target * (1.0 + tol))
-    if lo < 0:
-        lo = 0
-    if hi - lo > MAX_BAND:
-        hi = lo + MAX_BAND
-    if hi < lo:
-        return 0.0
-    A = beta / (beta + days)
-    B = days / (beta + days)
-    p = math.exp(
-        math.lgamma(alpha + lo)
-        - math.lgamma(alpha)
-        - math.lgamma(lo + 1)
-        + alpha * math.log(A)
-        + lo * math.log(B)
-    )
-    total_p = p
-    v = lo
-    while v < hi:
-        v += 1
-        # pmf(v) = pmf(v - 1) * ((alpha + v - 1) / v) * B
-        p = p * ((alpha + v - 1) / v) * B
-        total_p += p
-    return total_p
+    if target <= 0:
+        return 1.0
+    mu = days * alpha / beta
+    sd = math.sqrt(days * alpha / beta + days * days * alpha / (beta * beta))
+    z = (mu - target) / sd
+    return 0.5 * math.erfc(-z / math.sqrt(2))
 
 #----------------------------------------------------------------------------
 # Reporting
@@ -179,7 +157,7 @@ def print_report(alpha, beta, pace, tol):
     print(f"{'--------':<8s} {'----------------':>16s} {'--------------':>14s}")
     for name, days in horizons:
         target = pace * days
-        p = maintained_prob(alpha, beta, days, pace, tol)
+        p = maintained_prob(alpha, beta, days, pace)
         print(f"{name:<8s} {target:>16.2f} {p * 100:>13.1f}%")
 
 #----------------------------------------------------------------------------
