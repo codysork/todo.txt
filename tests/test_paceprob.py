@@ -49,6 +49,16 @@ Assumptions:
    main() currently rejects a pace of 0 ("Pace must be > 0."); the spec
    asserts the model/report level behavior.
 
+8. The new spec "Decreasing the pace input value should ALWAYS increase
+   P values" is encoded by S8 as: for the Day horizon (days = 1) and the
+   synthetic posterior, with the decreasing ladder
+   DECREASING_PACE_FRACTIONS * lam (largest pace first),
+   maintained_prob at each lower pace is strictly greater than
+   maintained_prob at the next higher pace. Assumed: "increase" is
+   strict; the ladder spans positive paces (0 < pace <= lam). The
+   strongest reading — every decrease in the pace input raising P for
+   any pair of positive paces — is an open question (see S2/S5).
+
 Scenarios:
 
 S1  test_posterior_derivation_from_done_history
@@ -84,6 +94,11 @@ S7  test_pace_of_zero_gives_hundred_percent_maintain
     (0, 0.0, -0.0) and horizon in {1, 7, month_length(TODAY),
     year_length(TODAY)}; print_report(alpha, beta, 0.0, tol) reports
     P(maintain) = 100.0% for the Day, Week, Month and Year rows.
+
+S8  test_decreasing_pace_always_increases_p
+    Decreasing the pace input value increases P values: the maintained
+    probability at a lower pace is strictly greater than at a higher pace
+    (see assumptions 8).
 """
 
 import io
@@ -109,6 +124,10 @@ SYNTHETIC_SPAN_DAYS = 6
 
 # Fractions of the posterior mean used as "paces below the posterior".
 PACE_FRACTIONS = (0.0, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99)
+
+# Ladder of paces for S8: given in decreasing order (largest pace first);
+# S8 asserts the maintained probability increases as the pace descends.
+DECREASING_PACE_FRACTIONS = (1.0, 0.99, 0.95, 0.9, 0.75, 0.5, 0.25)
 
 # Fraction whose maintained probability is asserted strictly greater than at
 # the posterior (S5), with the assumption that the current behavior satisfies
@@ -307,6 +326,32 @@ def test_pace_of_zero_gives_hundred_percent_maintain():
         )
         assert math.isclose(pct, 100.0, rel_tol=0.0, abs_tol=0.11), (
             f"{name}: P(maintain)={pct}, expected 100.0"
+        )
+
+
+# --- S8 --------------------------------------------------------------------
+
+
+def test_decreasing_pace_always_increases_p():
+    """S8: decreasing the pace input value increases P values.
+
+    For the synthetic posterior and the decreasing ladder
+    DECREASING_PACE_FRACTIONS * lam (largest pace first), the maintained
+    probability strictly increases as the pace decreases:
+    maintained_prob(alpha, beta, 1, pace_low, DEFAULT_TOL) >
+    maintained_prob(alpha, beta, 1, pace_high, DEFAULT_TOL)
+    whenever pace_low < pace_high.
+    """
+    alpha, beta = synthetic_posterior()
+    lam = alpha / beta
+    ladder = [lam * frac for frac in DECREASING_PACE_FRACTIONS]
+    for high, low in zip(ladder, ladder[1:]):
+        assert high > low
+        p_high = maintained_at(alpha, beta, 1, high)
+        p_low = maintained_at(alpha, beta, 1, low)
+        assert p_low > p_high, (
+            f"pace {low:.4f} -> P={p_low:.6f}, pace {high:.4f} -> "
+            f"P={p_high:.6f}: decreasing the pace did not increase P"
         )
 
 
