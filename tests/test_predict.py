@@ -33,6 +33,9 @@ PACE_FRACTIONS = (0.0, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99)
 DECREASING_PACE_FRACTIONS = (1.0, 0.99, 0.95, 0.9, 0.75, 0.5, 0.25)
 STRICT_FRACTION = 0.75
 
+# Smallest effort token in DONE_LINES (efforts 3.0, 3.5 and 4.0).
+MIN_EFFORT = 3.0
+
 # Report comparison tolerances; rows print with one decimal place.
 TARGET_TOL = 0.01
 REPORT_P_TOL = 0.06
@@ -76,11 +79,11 @@ def period_horizons():
     }
 
 
-def report_rows(alpha, beta, pace, tol):
+def report_rows(alpha, beta, pace):
     """Print a report and parse its Day/Week/Month/Year rows."""
     output = io.StringIO()
     with redirect_stdout(output):
-        predict.print_report(alpha, beta, pace, tol)
+        predict.print_report(alpha, beta, pace)
 
     rows = {}
     for line in output.getvalue().splitlines():
@@ -91,10 +94,10 @@ def report_rows(alpha, beta, pace, tol):
 
 
 def zero_pace_report_rows():
-    """Return the parsed report rows of print_report(alpha, beta, 0.0, tol)."""
+    """Return the parsed report rows of print_report(alpha, beta, 0.0)."""
     horizons = period_horizons()
     alpha, beta = synthetic_posterior()
-    rows = report_rows(alpha, beta, 0.0, predict.DEFAULT_TOL)
+    rows = report_rows(alpha, beta, 0.0)
     assert set(rows) == set(horizons)
     return rows
 
@@ -171,7 +174,7 @@ def test_report_rows_cover_all_periods():
     """The report prints a row for each of the periods."""
     horizons = period_horizons()
     alpha, beta = synthetic_posterior()
-    rows = report_rows(alpha, beta, alpha / beta, predict.DEFAULT_TOL)
+    rows = report_rows(alpha, beta, alpha / beta)
     assert set(rows) == set(horizons)
 
 
@@ -180,7 +183,7 @@ def test_report_target_velocity_column_is_pace_times_horizon():
     horizons = period_horizons()
     alpha, beta = synthetic_posterior()
     pace = alpha / beta
-    rows = report_rows(alpha, beta, pace, predict.DEFAULT_TOL)
+    rows = report_rows(alpha, beta, pace)
 
     for name, days in horizons.items():
         target, _percentage = rows[name]
@@ -194,7 +197,7 @@ def test_report_p_maintain_column_matches_model():
     horizons = period_horizons()
     alpha, beta = synthetic_posterior()
     pace = alpha / beta
-    rows = report_rows(alpha, beta, pace, predict.DEFAULT_TOL)
+    rows = report_rows(alpha, beta, pace)
 
     for name, days in horizons.items():
         _target, percentage = rows[name]
@@ -230,6 +233,34 @@ def test_report_at_zero_pace_has_zero_target_velocity():
 def test_report_at_zero_pace_prints_hundred_percent():
     """The zero-pace report prints P(maintain) = 100.0% per period."""
     for name, (_target, percentage) in zero_pace_report_rows().items():
+        assert math.isclose(
+            percentage, 100.0, rel_tol=0.0, abs_tol=ZERO_PCT_TOL
+        ), f"{name}: expected 100.0%, got {percentage}%"
+
+
+# --- Minimum-effort pace ----------------------------------------------------------
+
+
+def test_maintained_prob_at_min_effort_is_one():
+    """A pace equal to the dataset's minimum effort is fully maintainable."""
+    alpha, beta = synthetic_posterior()
+    horizons = period_horizons()
+
+    for days in horizons.values():
+        probability = maintained(alpha, beta, days, MIN_EFFORT)
+        assert math.isclose(
+            probability, 1.0, rel_tol=0.0, abs_tol=ZERO_P_TOL
+        ), f"days={days} pace={MIN_EFFORT}: expected P ~ 1.0, got {probability:.6f}"
+
+
+def test_report_at_min_effort_prints_hundred_percent():
+    """The report shows 100% for a pace equal to the minimum effort value."""
+    alpha, beta = synthetic_posterior()
+    horizons = period_horizons()
+    rows = report_rows(alpha, beta, MIN_EFFORT)
+    assert set(rows) == set(horizons)
+
+    for name, (_target, percentage) in rows.items():
         assert math.isclose(
             percentage, 100.0, rel_tol=0.0, abs_tol=ZERO_PCT_TOL
         ), f"{name}: expected 100.0%, got {percentage}%"

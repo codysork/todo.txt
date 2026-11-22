@@ -7,10 +7,9 @@
 # @description Print the probability (%) of keeping a pace, from done.txt history.
 #
 # Usage:
-#   todo.sh predict pace [pace] [tolerance]
+#   todo.sh predict pace [pace]
 #
 #   pace       target daily effort rate (default: posterior mean rate)
-#   tolerance  relative band, default 0.20
 
 import math
 import os
@@ -31,10 +30,6 @@ TODAY = date.today()
 PRIOR_ALPHA = 1.0
 PRIOR_BETA = 1.0
 
-# Default relative band around the target:
-# [pace * d * (1 - tol), pace * d * (1 + tol)].
-DEFAULT_TOL = 0.20
-
 HELP_WORDS = ("usage", "help", "-h", "--help")
 
 #----------------------------------------------------------------------------
@@ -47,11 +42,9 @@ def usage():
     print("      Modes:")
     print("        pace       maintainability report for a target daily pace")
     print("          pace     target rate (default: posterior mean rate)")
-    print("          tolerance  relative band, default 0.20")
     print("      Examples:")
     print("        todo.sh predict pace")
     print("        todo.sh predict pace 3.5")
-    print("        todo.sh predict pace 3.5 0.15")
 
 
 def fail(message):
@@ -144,7 +137,7 @@ def maintained_prob(alpha, beta, days, pace):
 # Reporting
 #----------------------------------------------------------------------------
 
-def print_report(alpha, beta, pace, tol):
+def print_report(alpha, beta, pace):
     lam = alpha / beta
     horizons = (
         ("Day", 1),
@@ -152,7 +145,7 @@ def print_report(alpha, beta, pace, tol):
         ("Month", month_length(TODAY)),
         ("Year", year_length(TODAY)),
     )
-    print(f"Target pace:    {pace:.2f} effort/day (tolerance {tol * 100:.0f}%)")
+    print(f"Target pace:    {pace:.2f} effort/day")
     print(f"Posterior rate: {lam:.3f} effort/day (alpha={alpha:.2f}, beta={beta:.2f})")
     print()
     print(f"{'Period':<8s} {'Target velocity':>16s} {'P(maintain)':>14s}")
@@ -169,19 +162,6 @@ def print_report(alpha, beta, pace, tol):
 def run_pace_mode(args, alpha, beta, lam):
     """Validate pace-mode arguments and print the Bayesian pace report."""
     pace_arg = args[0] if len(args) >= 1 else None
-    tol_arg = args[1] if len(args) >= 2 else None
-
-    if tol_arg is None:
-        tol = DEFAULT_TOL
-    else:
-        try:
-            tol = float(tol_arg)
-        except ValueError:
-            fail(f"Tolerance must be a number: {tol_arg}")
-        if not (tol > 0):
-            fail("Tolerance must be > 0.")
-        if not math.isfinite(tol):
-            fail("Tolerance must be finite.")
 
     if pace_arg is None:
         pace = lam
@@ -195,7 +175,7 @@ def run_pace_mode(args, alpha, beta, lam):
         if not math.isfinite(pace):
             fail("Pace must be finite.")
 
-    print_report(alpha, beta, pace, tol)
+    print_report(alpha, beta, pace)
 
 #----------------------------------------------------------------------------
 # Main
@@ -217,7 +197,7 @@ def main():
         return 0
 
     if not args:
-        fail("Missing predict mode. Use 'predict pace [pace] [tolerance]'.")
+        fail("Missing predict mode. Use 'predict pace [pace]'.")
     mode = args[0].lower()
     if mode != "pace":
         fail(f"Unknown predict mode '{args[0]}'.")
