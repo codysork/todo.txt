@@ -36,7 +36,7 @@ The repository contains configuration and code, not task data. By default, task 
 | `todo.sh routine show <frequency>\|all` | Lists routine tasks |
 | `todo.sh repeat ITEM [DATE\|DAY]` | Completes and re-adds a task, optionally rescheduling its threshold |
 | `todo.sh pace [daily\|weekly\|monthly\|annual] [count]` | Reports completed effort points per day for each period |
-| `todo.sh predict pace [pace] [tolerance]` | Estimates the probability of maintaining a pace; defaults to the posterior-mean pace and a 20% band |
+| `todo.sh predict pace [pace]` | Estimates the probability of meeting the daily pace every day throughout each period; defaults to the historical mean |
 | `todo.sh popup` | Opens a dialog to add a task |
 | `todo.sh kanban` | Identifies tasks for the board’s columns; board rendering is not implemented yet |
 
@@ -76,4 +76,3 @@ Or run the test file directly:
 ```bash
 python tests/test_predict.py
 ```
-

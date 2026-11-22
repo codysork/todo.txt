@@ -13,7 +13,7 @@
 #   pace       target daily effort rate (default: historical mean)
 #
 # Model:
-#   Moving-block bootstrap of historical daily effort.
+#   Circular moving-block bootstrap of historical daily effort.
 #   Contiguous blocks preserve short-term patterns in productivity.
 #
 # Dependencies: Python standard library only.
@@ -53,7 +53,7 @@ EFFORT_RE = re.compile(r"^effort:([0-9]+(?:\.[0-9]+)?)$")
 
 def usage():
     print("  predict")
-    print("    Estimate the probability of maintaining a pace.")
+    print("    Estimate the probability of meeting a pace every day.")
     print("      Modes:")
     print("        pace       predict maintainability")
     print("          pace     target daily effort (default: historical mean)")
@@ -197,66 +197,50 @@ def parse_done(path):
 # Bootstrap prediction
 #----------------------------------------------------------------------------
 
-def bootstrap_sum(daily, days, block_size, rng):
+def bootstrap_days(daily, days, block_size, rng):
+    """Sample daily sequences in contiguous blocks with replacement.
+
+    Blocks wrap at the end of history so every historical day can start
+    a block, including when shorter horizons use a longer path's prefix.
     """
-    Generate a simulated future effort total.
-
-    Randomly samples contiguous historical blocks, preserving
-    short-term patterns such as productive and unproductive
-    stretches.
-
-    Blocks are sampled with replacement.
-    """
-
     n = len(daily)
     remaining = days
-    total = 0.0
-
     while remaining > 0:
         take = min(block_size, remaining)
-
-        # Select a valid contiguous block.
-        start = rng.randrange(n - take + 1)
-
-        total += math.fsum(daily[start:start + take])
+        start = rng.randrange(n)
+        for offset in range(take):
+            yield daily[(start + offset) % n]
         remaining -= take
-
-    return total
 
 
 def simulate_probability(daily, days, pace, simulations, rng):
-    """
-    Estimate the probability of achieving the target average
-    daily effort over a future period.
+    """Return probability and MC error for meeting the pace every day."""
+    return simulate_probabilities(daily, (days,), pace, simulations, rng)[days]
 
-    Returns:
-        (probability, Monte Carlo standard error)
-    """
 
-    target = pace * days
+def simulate_probabilities(daily, horizons, pace, simulations, rng):
+    """Evaluate all horizons on shared paths, so success events are nested."""
+    horizons = sorted(set(horizons))
     block_size = min(BLOCK_DAYS, len(daily))
-
-    successes = 0
+    successes = dict.fromkeys(horizons, 0)
 
     for _ in range(simulations):
-        effort = bootstrap_sum(
-            daily,
-            days,
-            block_size,
-            rng
-        )
+        sustained = True
+        path = bootstrap_days(daily, horizons[-1], block_size, rng)
+        # Consume the whole path even after failure, keeping random draws
+        # independent of pace when comparing targets with the same seed.
+        for day, effort in enumerate(path, start=1):
+            sustained = sustained and effort >= pace
+            if day in successes and sustained:
+                successes[day] += 1
 
-        if effort >= target:
-            successes += 1
-
-    probability = successes / simulations
-
-    # Monte Carlo sampling error, not historical uncertainty.
-    error = math.sqrt(
-        probability * (1.0 - probability) / simulations
-    )
-
-    return probability, error
+    results = {}
+    for days, count in successes.items():
+        probability = count / simulations
+        # Monte Carlo sampling error, not historical uncertainty.
+        error = math.sqrt(probability * (1.0 - probability) / simulations)
+        results[days] = probability, error
+    return results
 
 
 #----------------------------------------------------------------------------
@@ -288,27 +272,22 @@ def print_report(history, pace):
     print(f"Block size:         {min(BLOCK_DAYS, history.span)} days")
     print()
 
-    print(f"{'Period':<9s} {'Target effort':>15s} "
+    print(f"{'Period':<9s} {'Pace/day':>15s} "
           f"{'P(maintain)':>15s} {'MC error':>12s}")
 
     print("-" * 55)
 
     rng = random.Random(RANDOM_SEED)
+    predictions = simulate_probabilities(
+        history.daily, [days for _, days in horizons], pace, SIMULATIONS, rng
+    )
 
     for name, days in horizons:
-        target = pace * days
-
-        probability, error = simulate_probability(
-            history.daily,
-            days,
-            pace,
-            SIMULATIONS,
-            rng
-        )
+        probability, error = predictions[days]
 
         print(
             f"{name:<9s} "
-            f"{target:>15.2f} "
+            f"{pace:>15.2f} "
             f"{probability * 100:>14.1f}% "
             f"±{error * 100:>9.2f} pp"
         )
@@ -316,7 +295,8 @@ def print_report(history, pace):
     print()
     print("Interpretation:")
     print("  Probability = chance of meeting or exceeding the")
-    print("  target total effort over the specified period.")
+    print("  target daily pace on EVERY day of the specified period.")
+    print("  Extra effort on one day cannot make up for a shortfall on another.")
     print()
     print("  MC error = Monte Carlo sampling error only.")
     print("  It does not represent uncertainty in future productivity.")

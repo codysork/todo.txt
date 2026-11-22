@@ -140,15 +140,46 @@ def test_calendar_horizons():
 
 
 def test_bootstrap_preserves_contiguous_blocks():
-    # Every two-day contiguous block sums to 10, unlike independent draws.
+    # Every two-day block alternates, unlike independent daily draws.
     rng = random.Random(0)
-    totals = [predict.bootstrap_sum([0, 10, 0, 10], 4, 2, rng)
-              for _ in range(100)]
-    assert set(totals) == {20.0}
+    paths = [list(predict.bootstrap_days([0, 10, 0, 10], 4, 2, rng))
+             for _ in range(100)]
+    assert all(path[i:i + 2] in ([0, 10], [10, 0])
+               for path in paths for i in (0, 2))
 
 
 def test_bootstrap_truncates_final_block():
-    assert predict.bootstrap_sum([2.0] * 7, 10, 7, random.Random(0)) == 20.0
+    assert list(predict.bootstrap_days(
+        [2.0] * 7, 10, 7, random.Random(0)
+    )) == [2.0] * 10
+
+
+def test_block_can_start_on_last_historical_day():
+    rng = random.Random(0)
+    with patch.object(rng, "randrange", return_value=2):
+        path = list(predict.bootstrap_days([1.0, 2.0, 3.0], 3, 3, rng))
+    assert path == [3.0, 1.0, 2.0]
+
+
+def test_excess_effort_cannot_compensate_for_a_failed_day():
+    # Every two-day block totals 6, but one day always fails a pace of 3.
+    assert simulate([6.0, 0.0], 2, 3.0) == (0.0, 0.0)
+
+
+def test_failure_is_not_erased_by_later_success():
+    rng = random.Random(0)
+    with patch.object(predict, "bootstrap_days", return_value=iter([0, 6, 6])):
+        results = predict.simulate_probabilities([0, 6], (1, 2, 3), 3, 1, rng)
+    assert results == {1: (0.0, 0.0), 2: (0.0, 0.0), 3: (0.0, 0.0)}
+
+
+def test_shared_paths_have_known_sustained_probabilities():
+    paths = [iter([3, 0, 6]), iter([3, 3, 0]), iter([3, 3, 3]), iter([0, 6, 6])]
+    with patch.object(predict, "bootstrap_days", side_effect=paths):
+        results = predict.simulate_probabilities(
+            [0, 3, 6], (1, 2, 3), 3, 4, random.Random(0)
+        )
+    assert [results[days][0] for days in (1, 2, 3)] == [0.75, 0.5, 0.25]
 
 
 def test_short_history_supports_long_horizons():
@@ -213,21 +244,38 @@ def test_report_covers_all_periods():
     assert set(report_rows(report(1.0))) == set(HORIZONS)
 
 
-def test_report_target_effort():
+def test_report_target_is_daily_pace_for_every_period():
     rows = report_rows(report(1.5))
-    assert all(rows[name][0] == 1.5 * days for name, days in HORIZONS.items())
+    assert all(rows[name][0] == 1.5 for name in HORIZONS)
 
 
 def test_report_probabilities_and_errors_match_simulation():
     rows = report_rows(report(1.0))
     rng = random.Random(predict.RANDOM_SEED)
-    expected = {
-        name: predict.simulate_probability(DAILY, days, 1.0, SIMULATIONS, rng)
-        for name, days in HORIZONS.items()
-    }
+    expected = predict.simulate_probabilities(
+        DAILY, HORIZONS.values(), 1.0, SIMULATIONS, rng
+    )
     assert all(abs(rows[name][1] - p * 100) <= 0.051
                and abs(rows[name][2] - error * 100) <= 0.0051
-               for name, (p, error) in expected.items())
+               for name, days in HORIZONS.items()
+               for p, error in (expected[days],))
+
+
+def test_longer_horizons_never_increase_probability():
+    daily = [3.0] * 20 + [0.0]
+    results = predict.simulate_probabilities(
+        daily, HORIZONS.values(), 3.0, SIMULATIONS, random.Random(0)
+    )
+    probabilities = [results[days][0] for days in HORIZONS.values()]
+    assert all(longer <= shorter
+               for shorter, longer in zip(probabilities, probabilities[1:]))
+
+
+def test_report_probabilities_never_increase_with_period():
+    rows = report_rows(report(1.0))
+    probabilities = [rows[name][1] for name in HORIZONS]
+    assert all(longer <= shorter
+               for shorter, longer in zip(probabilities, probabilities[1:]))
 
 
 def test_zero_pace_report():
