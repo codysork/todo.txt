@@ -1,84 +1,288 @@
-"""Fail-first specification for the `todo.sh predict` CLI interface.
-
-Spec:
-* `todo.sh predict pace 3.0` is valid input — `pace` is a subcommand/mode and
-  `3.0` is the target pace value.
-* `todo.sh predict 3.0` is not valid input — a bare number without the `pace`
-  subcommand must be rejected.
-
-These tests fail today because `actions/predict` accepts a bare pace number and
-has no `pace` subcommand; the production action is left unchanged by this spec.
+"""Executable specification for the `predict` todo.sh action.
 
 Run with:
     cd ~/.todo
     python -m pytest tests/test_predict.py -v
+    python tests/test_predict.py
+
+The tests use a fixed synthetic history and do not read real task data or
+depend on the current date.
 """
 
-import shlex
-import subprocess
+import io
+import math
+import sys
 import tempfile
+import types
+from contextlib import redirect_stdout
+from datetime import date
 from pathlib import Path
 
-TODO_SH = "todo.sh"
+ACTIONS_DIR = Path(__file__).resolve().parent.parent / "actions"
 
-# Fixed synthetic history: total effort 10.5 over 6 days -> alpha=11.5, beta=7.
 DONE_LINES = (
     "x 2026-11-12 effort:3.0\n",
     "x 2026-11-13 effort:3.5\n",
     "x 2026-11-17 effort:4.0\n",
 )
+TOTAL_EFFORT = 10.5
+SPAN_DAYS = 6
+TEST_DATE = date(2026, 11, 21)
+
+PACE_FRACTIONS = (0.0, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99)
+DECREASING_PACE_FRACTIONS = (1.0, 0.99, 0.95, 0.9, 0.75, 0.5, 0.25)
+STRICT_FRACTION = 0.75
+
+# Report comparison tolerances; rows print with one decimal place.
+TARGET_TOL = 0.01
+REPORT_P_TOL = 0.06
+ZERO_P_TOL = 0.01
+ZERO_PCT_TOL = 0.11
+
+# Report periods; period_horizons() maps them to their day counts.
+HORIZON_NAMES = ("Day", "Week", "Month", "Year")
 
 
-def run_predict(*args):
-    """Run `todo.sh predict <args>` against a scratch done file."""
+def load_predict():
+    """Load the extension-less `actions/predict` script as a module."""
+    path = ACTIONS_DIR / "predict"
+    module = types.ModuleType("predict")
+    module.__file__ = str(path)
+    exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"), module.__dict__)
+    return module
+
+
+predict = load_predict()
+
+
+def synthetic_posterior():
+    """Return the posterior parameters for the fixed synthetic history."""
+    return predict.posterior(TOTAL_EFFORT, SPAN_DAYS)
+
+
+def maintained(alpha, beta, days, pace):
+    """Return maintainability for the given inputs."""
+    return predict.maintained_prob(alpha, beta, days, pace)
+
+
+def period_horizons():
+    """Return the report periods and their expected day counts."""
+    predict.TODAY = TEST_DATE
+    return {
+        "Day": 1,
+        "Week": 7,
+        "Month": predict.month_length(TEST_DATE),
+        "Year": predict.year_length(TEST_DATE),
+    }
+
+
+def report_rows(alpha, beta, pace, tol):
+    """Print a report and parse its Day/Week/Month/Year rows."""
+    output = io.StringIO()
+    with redirect_stdout(output):
+        predict.print_report(alpha, beta, pace, tol)
+
+    rows = {}
+    for line in output.getvalue().splitlines():
+        parts = line.split()
+        if len(parts) == 3 and parts[0] in HORIZON_NAMES:
+            rows[parts[0]] = (float(parts[1]), float(parts[2].rstrip("%")))
+    return rows
+
+
+def zero_pace_report_rows():
+    """Return the parsed report rows of print_report(alpha, beta, 0.0, tol)."""
+    horizons = period_horizons()
+    alpha, beta = synthetic_posterior()
+    rows = report_rows(alpha, beta, 0.0, predict.DEFAULT_TOL)
+    assert set(rows) == set(horizons)
+    return rows
+
+
+# --- Posterior ----------------------------------------------------------------
+
+
+def test_posterior_derivation_from_done_history():
+    """Done-file totals and span map to the history's (total, span)."""
     with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        done_file = root / "done.txt"
+        done_file = Path(tmp) / "done.txt"
         done_file.write_text("".join(DONE_LINES), encoding="utf-8")
-        config = root / "todo-test.cfg"
-        config.write_text(
-            f"export TODO_DIR={shlex.quote(str(root))}\n"
-            f"export DONE_FILE={shlex.quote(str(done_file))}\n",
-            encoding="utf-8",
+        total, span = predict.parse_done(str(done_file))
+
+    assert total == TOTAL_EFFORT
+    assert span == SPAN_DAYS
+
+
+def test_posterior_maps_total_and_span_to_gamma_shape():
+    """posterior() maps (total, span) to Gamma(1 + total, 1 + span)."""
+    assert predict.posterior(TOTAL_EFFORT, SPAN_DAYS) == (
+        1 + TOTAL_EFFORT,
+        1 + SPAN_DAYS,
+    )
+
+
+def test_posterior_mean_matches_gamma_mean():
+    """The posterior rate is the Gamma mean, alpha / beta."""
+    alpha, beta = synthetic_posterior()
+    assert alpha / beta == (1 + TOTAL_EFFORT) / (1 + SPAN_DAYS)
+
+
+# --- Maintainability ----------------------------------------------------------
+
+
+def test_pace_below_posterior_is_at_least_as_likely_as_posterior():
+    """Paces below the posterior mean are no less maintainable on Day."""
+    alpha, beta = synthetic_posterior()
+    lam = alpha / beta
+    at_mean = maintained(alpha, beta, 1, lam)
+
+    for fraction in PACE_FRACTIONS:
+        probability = maintained(alpha, beta, 1, fraction * lam)
+        assert probability >= at_mean, (
+            f"fraction={fraction}: P={probability:.6f} < "
+            f"P at posterior mean={at_mean:.6f}"
         )
-        return subprocess.run(
-            [TODO_SH, "-d", str(config), "predict", *args],
-            capture_output=True,
-            text=True,
-            check=False,
+
+
+def test_maintainability_probability_is_bounded():
+    """Maintainability probabilities stay within [0, 1]."""
+    alpha, beta = synthetic_posterior()
+    lam = alpha / beta
+
+    for fraction in PACE_FRACTIONS:
+        probability = maintained(alpha, beta, 1, fraction * lam)
+        assert 0.0 <= probability <= 1.0
+
+
+def test_pace_below_posterior_is_more_likely_than_the_posterior():
+    """A pace at 75% of the posterior mean is more maintainable on Day."""
+    alpha, beta = synthetic_posterior()
+    lam = alpha / beta
+
+    assert maintained(alpha, beta, 1, STRICT_FRACTION * lam) > maintained(
+        alpha, beta, 1, lam
+    )
+
+
+# --- Report columns ------------------------------------------------------------
+
+
+def test_report_rows_cover_all_periods():
+    """The report prints a row for each of the periods."""
+    horizons = period_horizons()
+    alpha, beta = synthetic_posterior()
+    rows = report_rows(alpha, beta, alpha / beta, predict.DEFAULT_TOL)
+    assert set(rows) == set(horizons)
+
+
+def test_report_target_velocity_column_is_pace_times_horizon():
+    """Each row's Target velocity is pace * horizon days."""
+    horizons = period_horizons()
+    alpha, beta = synthetic_posterior()
+    pace = alpha / beta
+    rows = report_rows(alpha, beta, pace, predict.DEFAULT_TOL)
+
+    for name, days in horizons.items():
+        target, _percentage = rows[name]
+        assert math.isclose(target, pace * days, rel_tol=0.0, abs_tol=TARGET_TOL), (
+            f"{name}: target velocity {target} != pace {pace} * horizon {days}"
         )
 
 
-def run_predict_pace(value):
-    """Run `todo.sh predict pace <value>` against a scratch done file."""
-    return run_predict("pace", value)
+def test_report_p_maintain_column_matches_model():
+    """Each row's P(maintain) is maintained_prob(horizon) * 100."""
+    horizons = period_horizons()
+    alpha, beta = synthetic_posterior()
+    pace = alpha / beta
+    rows = report_rows(alpha, beta, pace, predict.DEFAULT_TOL)
+
+    for name, days in horizons.items():
+        _target, percentage = rows[name]
+        expected = maintained(alpha, beta, days, pace) * 100
+        assert math.isclose(percentage, expected, rel_tol=0.0, abs_tol=REPORT_P_TOL), (
+            f"{name}: P(maintain) {percentage} != expected {expected}"
+        )
 
 
-def test_predict_pace_subcommand_runs_successfully():
-    """`todo.sh predict pace 3.0` is valid input: the action should exit 0."""
-    result = run_predict_pace("3.0")
-    assert result.returncode == 0, (
-        f"exit={result.returncode}, stdout={result.stdout!r}, stderr={result.stderr!r}"
+# --- Zero pace ------------------------------------------------------------------
+
+
+def test_maintained_prob_of_zero_pace_is_one():
+    """A zero pace gives 100% maintainability for every horizon."""
+    alpha, beta = synthetic_posterior()
+    horizons = period_horizons()
+
+    for days in horizons.values():
+        for pace in (0, 0.0, -0.0):
+            assert math.isclose(
+                maintained(alpha, beta, days, pace), 1.0, rel_tol=0.0, abs_tol=ZERO_P_TOL
+            ), f"days={days} pace={pace}: expected P ~ 1.0"
+
+
+def test_report_at_zero_pace_has_zero_target_velocity():
+    """The zero-pace report prints zero Target velocity per period."""
+    for name, (target, _percentage) in zero_pace_report_rows().items():
+        assert math.isclose(target, 0.0, rel_tol=0.0, abs_tol=TARGET_TOL), (
+            f"{name}: target velocity {target}, expected 0.0"
+        )
+
+
+def test_report_at_zero_pace_prints_hundred_percent():
+    """The zero-pace report prints P(maintain) = 100.0% per period."""
+    for name, (_target, percentage) in zero_pace_report_rows().items():
+        assert math.isclose(
+            percentage, 100.0, rel_tol=0.0, abs_tol=ZERO_PCT_TOL
+        ), f"{name}: expected 100.0%, got {percentage}%"
+
+
+# --- Decreasing pace -------------------------------------------------------------
+
+
+def test_decreasing_pace_always_increases_p():
+    """Maintainability strictly increases down the specified pace ladder."""
+    alpha, beta = synthetic_posterior()
+    lam = alpha / beta
+    ladder = [fraction * lam for fraction in DECREASING_PACE_FRACTIONS]
+
+    for higher, lower in zip(ladder, ladder[1:]):
+        assert higher > lower
+        assert maintained(alpha, beta, 1, lower) > maintained(
+            alpha, beta, 1, higher
+        ), f"decreasing pace from {higher:.4f} to {lower:.4f} did not increase P"
+
+
+# --- Standalone runner (no third-party packages needed) ----------------------------
+
+
+def _run_standalone():
+    """Run the tests without requiring pytest."""
+    tests = sorted(
+        (name, fn)
+        for name, fn in globals().items()
+        if name.startswith("test_") and callable(fn)
     )
+    failures = []
+
+    for name, test in tests:
+        try:
+            test()
+        except AssertionError:
+            failures.append(name)
+            print(f"FAIL {name}", file=sys.stderr)
+        else:
+            print(f"PASS {name}")
+
+    if failures:
+        print(
+            f"\n{len(failures)} of {len(tests)} scenario(s) failed: "
+            f"{', '.join(failures)}",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"\nAll {len(tests)} scenario(s) passed.")
+    return 0
 
 
-def test_predict_pace_subcommand_reports_target_pace():
-    """The subcommand value 3.0 should be used as the target daily pace."""
-    result = run_predict_pace("3.0")
-    assert "Target pace:    3.00 effort/day" in result.stdout, (
-        f"stdout={result.stdout!r}, stderr={result.stderr!r}"
-    )
-
-
-def test_predict_rejects_bare_pace_number():
-    """`todo.sh predict 3.0` is invalid without the `pace` subcommand."""
-    result = run_predict("3.0")
-    assert result.returncode != 0, (
-        f"exit={result.returncode}, stdout={result.stdout!r}, stderr={result.stderr!r}"
-    )
-
-
-def test_predict_bare_pace_number_prints_no_report():
-    """A rejected bare number must not print a pace report."""
-    result = run_predict("3.0")
-    assert "Target pace:" not in result.stdout, f"stdout={result.stdout!r}"
+if __name__ == "__main__":
+    sys.exit(_run_standalone())

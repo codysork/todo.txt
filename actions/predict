@@ -7,7 +7,7 @@
 # @description Print the probability (%) of keeping a pace, from done.txt history.
 #
 # Usage:
-#   todo.sh predict [pace] [tolerance]
+#   todo.sh predict pace [pace] [tolerance]
 #
 #   pace       target daily effort rate (default: posterior mean rate)
 #   tolerance  relative band, default 0.20
@@ -44,12 +44,14 @@ HELP_WORDS = ("usage", "help", "-h", "--help")
 def usage():
     print("  predict")
     print("    Print the probability (%) of keeping a pace, from done.txt history.")
-    print("      pace       target daily effort rate (default: posterior mean rate)")
-    print("      tolerance  relative band, default 0.20")
+    print("      Modes:")
+    print("        pace       maintainability report for a target daily pace")
+    print("          pace     target rate (default: posterior mean rate)")
+    print("          tolerance  relative band, default 0.20")
     print("      Examples:")
-    print("        todo.sh predict")
-    print("        todo.sh predict 3.5")
-    print("        todo.sh predict 3.5 0.15")
+    print("        todo.sh predict pace")
+    print("        todo.sh predict pace 3.5")
+    print("        todo.sh predict pace 3.5 0.15")
 
 
 def fail(message):
@@ -161,28 +163,11 @@ def print_report(alpha, beta, pace, tol):
         print(f"{name:<8s} {target:>16.2f} {p * 100:>13.1f}%")
 
 #----------------------------------------------------------------------------
-# Main
+# Modes
 #----------------------------------------------------------------------------
 
-def main():
-    args = sys.argv[1:]
-
-    if args and args[0].lower() in HELP_WORDS:
-        usage()
-        return 0
-
-    # todo.sh passes the action name as the first argument; `todo.sh help`
-    # and `todo.sh shorthelp` pass `usage` as the only argument.
-    if args and args[0].lower() == "predict":
-        args = args[1:]
-    if args and args[0].lower() in HELP_WORDS:
-        usage()
-        return 0
-
-    total, span = parse_done(DONE_FILE)
-    alpha, beta = posterior(total, span)
-    lam = alpha / beta
-
+def run_pace_mode(args, alpha, beta, lam):
+    """Validate pace-mode arguments and print the Bayesian pace report."""
     pace_arg = args[0] if len(args) >= 1 else None
     tol_arg = args[1] if len(args) >= 2 else None
 
@@ -211,6 +196,41 @@ def main():
             fail("Pace must be finite.")
 
     print_report(alpha, beta, pace, tol)
+
+#----------------------------------------------------------------------------
+# Main
+#----------------------------------------------------------------------------
+
+def main():
+    args = sys.argv[1:]
+
+    if args and args[0].lower() in HELP_WORDS:
+        usage()
+        return 0
+
+    # todo.sh passes the action name as the first argument; `todo.sh help`
+    # and `todo.sh shorthelp` pass `usage` as the only argument.
+    if args and args[0].lower() == "predict":
+        args = args[1:]
+    if args and args[0].lower() in HELP_WORDS:
+        usage()
+        return 0
+
+    if not args:
+        fail("Missing predict mode. Use 'predict pace [pace] [tolerance]'.")
+    mode = args[0].lower()
+    if mode != "pace":
+        fail(f"Unknown predict mode '{args[0]}'.")
+    args = args[1:]
+    if args and args[0].lower() in HELP_WORDS:
+        usage()
+        return 0
+
+    total, span = parse_done(DONE_FILE)
+    alpha, beta = posterior(total, span)
+    lam = alpha / beta
+
+    run_pace_mode(args, alpha, beta, lam)
     return 0
 
 

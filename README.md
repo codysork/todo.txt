@@ -6,7 +6,7 @@ A collection of configuration, add-ons, and filters for [todo.txt-cli](https://g
 
 - **Threshold scheduling:** Set a `t:` date to keep a task hidden until it is ready to appear. Tasks with future thresholds are hidden from the normal list and can be shown with `todo.sh -x`.
 - **Recurring routines:** Tag tasks with a frequency such as `@Routine:weekly` and set their next threshold.
-- **Completion tracking:** `pace` reports completed effort points over time; `paceprob` estimates the probability of maintaining a target pace.
+- **Completion tracking:** `pace` reports completed effort points over time; `predict pace` estimates the probability of maintaining a target pace.
 - **Task management:** Add tasks through a desktop dialog with `popup`, repeat completed tasks with `repeat`, and view due tasks with `today`.
 - **Kanban groundwork:** `kanban` identifies tasks for board columns, but does not yet draw the board.
 
@@ -36,7 +36,7 @@ The repository contains configuration and code, not task data. By default, task 
 | `todo.sh routine show <frequency>\|all` | Lists routine tasks |
 | `todo.sh repeat ITEM [DATE\|DAY]` | Completes and re-adds a task, optionally rescheduling its threshold |
 | `todo.sh pace [daily\|weekly\|monthly\|annual] [count]` | Reports completed effort points per day for each period |
-| `todo.sh paceprob [pace] [tolerance]` | Estimates the probability of maintaining a pace; defaults to the posterior-mean pace and a 20% band |
+| `todo.sh predict pace [pace] [tolerance]` | Estimates the probability of maintaining a pace; defaults to the posterior-mean pace and a 20% band |
 | `todo.sh popup` | Opens a dialog to add a task |
 | `todo.sh kanban` | Identifies tasks for the board’s columns; board rendering is not implemented yet |
 
@@ -65,15 +65,15 @@ Add-ons resolve the todo.sh command and task-file paths themselves, so they can 
 
 ## Tests and current status
 
-Run the `paceprob` tests with:
+Run the `predict` tests with:
 
 ```bash
-python -m pytest tests/test_paceprob.py -v
+python -m pytest tests/test_predict.py -v
 ```
 
 Or run the test file directly:
 
 ```bash
-python tests/test_paceprob.py
+python tests/test_predict.py
 ```
 
