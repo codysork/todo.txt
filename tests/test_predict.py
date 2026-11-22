@@ -30,8 +30,9 @@ SPAN_DAYS = 6
 TEST_DATE = date(2026, 11, 21)
 
 PACE_FRACTIONS = (0.0, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99)
-DECREASING_PACE_FRACTIONS = (1.0, 0.99, 0.95, 0.9, 0.75, 0.5, 0.25)
-STRICT_FRACTION = 0.75
+
+# Multiples of MIN_EFFORT, decreasing toward the minimum.
+DECREASING_PACE_FRACTIONS = (2.0, 1.75, 1.5, 1.25, 1.1, 1.05, 1.0)
 
 # Smallest effort token in DONE_LINES (efforts 3.0, 3.5 and 4.0).
 MIN_EFFORT = 3.0
@@ -65,7 +66,7 @@ def synthetic_posterior():
 
 def maintained(alpha, beta, days, pace):
     """Return maintainability for the given inputs."""
-    return predict.maintained_prob(alpha, beta, days, pace)
+    return predict.maintained_prob(alpha, beta, days, pace, MIN_EFFORT)
 
 
 def period_horizons():
@@ -83,7 +84,7 @@ def report_rows(alpha, beta, pace):
     """Print a report and parse its Day/Week/Month/Year rows."""
     output = io.StringIO()
     with redirect_stdout(output):
-        predict.print_report(alpha, beta, pace)
+        predict.print_report(alpha, beta, pace, MIN_EFFORT)
 
     rows = {}
     for line in output.getvalue().splitlines():
@@ -110,10 +111,11 @@ def test_posterior_derivation_from_done_history():
     with tempfile.TemporaryDirectory() as tmp:
         done_file = Path(tmp) / "done.txt"
         done_file.write_text("".join(DONE_LINES), encoding="utf-8")
-        total, span = predict.parse_done(str(done_file))
+        history = predict.parse_done(str(done_file))
 
-    assert total == TOTAL_EFFORT
-    assert span == SPAN_DAYS
+    assert history.total == TOTAL_EFFORT
+    assert history.span == SPAN_DAYS
+    assert history.min_effort == MIN_EFFORT
 
 
 def test_posterior_maps_total_and_span_to_gamma_shape():
@@ -157,13 +159,12 @@ def test_maintainability_probability_is_bounded():
         assert 0.0 <= probability <= 1.0
 
 
-def test_pace_below_posterior_is_more_likely_than_the_posterior():
-    """A pace at 75% of the posterior mean is more maintainable on Day."""
+def test_pace_above_minimum_is_less_likely_than_minimum():
+    """A pace above the minimum is less maintainable than the minimum."""
     alpha, beta = synthetic_posterior()
-    lam = alpha / beta
 
-    assert maintained(alpha, beta, 1, STRICT_FRACTION * lam) > maintained(
-        alpha, beta, 1, lam
+    assert maintained(alpha, beta, 1, MIN_EFFORT * 1.5) < maintained(
+        alpha, beta, 1, MIN_EFFORT
     )
 
 
@@ -253,6 +254,18 @@ def test_maintained_prob_at_min_effort_is_one():
         ), f"days={days} pace={MIN_EFFORT}: expected P ~ 1.0, got {probability:.6f}"
 
 
+def test_pace_below_minimum_is_fully_maintainable():
+    """Every pace below the dataset minimum is fully maintainable."""
+    alpha, beta = synthetic_posterior()
+    horizons = period_horizons()
+
+    for days in horizons.values():
+        for pace in (0.0, 0.5 * MIN_EFFORT):
+            assert math.isclose(
+                maintained(alpha, beta, days, pace), 1.0, rel_tol=0.0, abs_tol=ZERO_P_TOL
+            ), f"days={days} pace={pace}: expected P ~ 1.0"
+
+
 def test_report_at_min_effort_prints_hundred_percent():
     """The report shows 100% for a pace equal to the minimum effort value."""
     alpha, beta = synthetic_posterior()
@@ -269,11 +282,10 @@ def test_report_at_min_effort_prints_hundred_percent():
 # --- Decreasing pace -------------------------------------------------------------
 
 
-def test_decreasing_pace_always_increases_p():
-    """Maintainability strictly increases down the specified pace ladder."""
+def test_decreasing_pace_toward_minimum_increases_p():
+    """Maintainability strictly increases as pace decreases toward the minimum."""
     alpha, beta = synthetic_posterior()
-    lam = alpha / beta
-    ladder = [fraction * lam for fraction in DECREASING_PACE_FRACTIONS]
+    ladder = [fraction * MIN_EFFORT for fraction in DECREASING_PACE_FRACTIONS]
 
     for higher, lower in zip(ladder, ladder[1:]):
         assert higher > lower

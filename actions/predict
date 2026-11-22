@@ -16,6 +16,7 @@ import os
 import re
 import sys
 from datetime import date, timedelta
+from typing import NamedTuple
 
 #----------------------------------------------------------------------------
 # Configuration
@@ -71,12 +72,19 @@ def year_length(today):
 # Data (from $DONE_FILE, parsed like `pace`)
 #----------------------------------------------------------------------------
 
+class History(NamedTuple):
+    total: float
+    span: int
+    min_effort: float
+
+
 def parse_done(path):
-    """Return (sum of effort values, span of completed days) from `path`."""
+    """Return the effort total, day span, and minimum effort from `path`."""
     effort_re = re.compile(r"^effort:([0-9]+(?:\.[0-9]+)?)$")
     if not os.path.isfile(path) or not os.access(path, os.R_OK):
         fail(f"Cannot read done file: {path}")
     total = 0.0
+    efforts = []
     first = None
     last = None
     with open(path, encoding="utf-8") as f:
@@ -91,13 +99,16 @@ def parse_done(path):
             for tok in fields[2:]:
                 m = effort_re.match(tok)
                 if m:
-                    total += float(m.group(1))
+                    effort = float(m.group(1))
+                    total += effort
+                    efforts.append(effort)
                     break
             first = d if first is None else min(first, d)
             last = d if last is None else max(last, d)
     if first is None:
         fail(f"No completions found in done file: {path}")
-    return total, (last - first).days + 1
+    min_effort = min(efforts) if efforts else 0.0
+    return History(total, (last - first).days + 1, min_effort)
 
 #----------------------------------------------------------------------------
 # Bayesian model (conjugate Gamma-Poisson)
@@ -114,30 +125,27 @@ def posterior(total, span):
     return alpha, beta
 
 
-def maintained_prob(alpha, beta, days, pace):
+def maintained_prob(alpha, beta, days, pace, min_effort):
     """Probability that the realized effort over `days` meets the target pace.
 
-    The realized effort is modeled as normal with
-        mean = days * alpha / beta           (posterior mean daily rate x days)
-        sd   = sqrt(days * alpha / beta + days**2 * alpha / beta**2)
-    (the variance of the negative-binomial marginal of the Poisson-Gamma
-    model).  Maintaining a pace of `pace` means realizing at least the
-    target; with a lower target the event is easier, so the probability
-    grows as the pace drops.  A target of 0 or less is met for sure.
+    A pace at or below the smallest effort on record is fully maintainable.
+    Above it, realized effort is assumed to be at least the minimum, with
+    deviations spread by the Poisson-Gamma predictive standard deviation;
+    the half-normal survival makes P start at 100% at the minimum and fall
+    smoothly toward zero as the target rises.
     """
-    target = pace * days
-    if target <= 0:
+    if pace <= min_effort:
         return 1.0
     mu = days * alpha / beta
     sd = math.sqrt(mu + days * days * alpha / (beta * beta))
-    z = (mu - target) / sd
-    return 0.5 * math.erfc(-z / math.sqrt(2))
+    excess = (pace - min_effort) * days
+    return math.erfc(excess / (sd * math.sqrt(2)))
 
 #----------------------------------------------------------------------------
 # Reporting
 #----------------------------------------------------------------------------
 
-def print_report(alpha, beta, pace):
+def print_report(alpha, beta, pace, min_effort):
     lam = alpha / beta
     horizons = (
         ("Day", 1),
@@ -152,14 +160,14 @@ def print_report(alpha, beta, pace):
     print(f"{'--------':<8s} {'----------------':>16s} {'--------------':>14s}")
     for name, days in horizons:
         target = pace * days
-        p = maintained_prob(alpha, beta, days, pace)
+        p = maintained_prob(alpha, beta, days, pace, min_effort)
         print(f"{name:<8s} {target:>16.2f} {p * 100:>13.1f}%")
 
 #----------------------------------------------------------------------------
 # Modes
 #----------------------------------------------------------------------------
 
-def run_pace_mode(args, alpha, beta, lam):
+def run_pace_mode(args, alpha, beta, lam, min_effort):
     """Validate pace-mode arguments and print the Bayesian pace report."""
     pace_arg = args[0] if len(args) >= 1 else None
 
@@ -175,7 +183,7 @@ def run_pace_mode(args, alpha, beta, lam):
         if not math.isfinite(pace):
             fail("Pace must be finite.")
 
-    print_report(alpha, beta, pace)
+    print_report(alpha, beta, pace, min_effort)
 
 #----------------------------------------------------------------------------
 # Main
@@ -206,11 +214,11 @@ def main():
         usage()
         return 0
 
-    total, span = parse_done(DONE_FILE)
-    alpha, beta = posterior(total, span)
+    history = parse_done(DONE_FILE)
+    alpha, beta = posterior(history.total, history.span)
     lam = alpha / beta
 
-    run_pace_mode(args, alpha, beta, lam)
+    run_pace_mode(args, alpha, beta, lam, history.min_effort)
     return 0
 
 
