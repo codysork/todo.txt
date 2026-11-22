@@ -1,330 +1,268 @@
-"""Executable specification for the `predict` todo.sh action.
+"""Executable specification for the bootstrap-based `predict` action.
 
-Run with:
-    cd ~/.todo
-    python -m pytest tests/test_predict.py -v
-    python tests/test_predict.py
-
-The tests use a fixed synthetic history and do not read real task data or
-depend on the current date.
+Run with pytest or `python tests/test_predict.py`. Histories, dates and random
+seeds are fixed; no real task data is read.
 """
 
 import io
 import math
+import os
+import random
+import subprocess
 import sys
-import tempfile
+import traceback
 import types
 from contextlib import redirect_stdout
 from datetime import date
 from pathlib import Path
+from unittest.mock import mock_open, patch
 
-ACTIONS_DIR = Path(__file__).resolve().parent.parent / "actions"
-
-DONE_LINES = (
-    "x 2026-11-12 effort:3.0\n",
-    "x 2026-11-13 effort:3.5\n",
-    "x 2026-11-17 effort:4.0\n",
-)
-TOTAL_EFFORT = 10.5
-SPAN_DAYS = 6
+ACTION = Path(__file__).resolve().parent.parent / "actions" / "predict"
 TEST_DATE = date(2026, 11, 21)
-
-PACE_FRACTIONS = (0.0, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99)
-
-# Multiples of MIN_EFFORT, decreasing toward the minimum.
-DECREASING_PACE_FRACTIONS = (2.0, 1.75, 1.5, 1.25, 1.1, 1.05, 1.0)
-
-# Smallest effort token in DONE_LINES (efforts 3.0, 3.5 and 4.0).
-MIN_EFFORT = 3.0
-
-# Report comparison tolerances; rows print with one decimal place.
-TARGET_TOL = 0.01
-REPORT_P_TOL = 0.06
-ZERO_P_TOL = 0.01
-ZERO_PCT_TOL = 0.11
-
-# Report periods; period_horizons() maps them to their day counts.
-HORIZON_NAMES = ("Day", "Week", "Month", "Year")
+DONE_TEXT = (
+    "x 2026-11-12 effort:3.0\n"
+    "x 2026-11-13 effort:3.5\n"
+    "x 2026-11-17 effort:4.0\n"
+)
+DAILY = [3.0, 3.5, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 0.0]
+HORIZONS = {"Day": 1, "Week": 7, "Month": 30, "Year": 365}
+SIMULATIONS = 1000
 
 
 def load_predict():
-    """Load the extension-less `actions/predict` script as a module."""
-    path = ACTIONS_DIR / "predict"
     module = types.ModuleType("predict")
-    module.__file__ = str(path)
-    exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"), module.__dict__)
+    module.__file__ = str(ACTION)
+    exec(compile(ACTION.read_text(), str(ACTION), "exec"), module.__dict__)
     return module
 
 
 predict = load_predict()
 
 
-def synthetic_posterior():
-    """Return the posterior parameters for the fixed synthetic history."""
-    return predict.posterior(TOTAL_EFFORT, SPAN_DAYS)
+def parse_history(text=DONE_TEXT):
+    with (
+        patch.object(predict, "TODAY", TEST_DATE),
+        patch("builtins.open", mock_open(read_data=text)),
+        patch.object(predict.os.path, "isfile", return_value=True),
+        patch.object(predict.os, "access", return_value=True),
+    ):
+        return predict.parse_done("synthetic-done.txt")
 
 
-def maintained(alpha, beta, days, pace):
-    """Return maintainability for the given inputs."""
-    return predict.maintained_prob(alpha, beta, days, pace, MIN_EFFORT)
+def simulate(daily, days, pace):
+    return predict.simulate_probability(
+        daily, days, pace, SIMULATIONS, random.Random(predict.RANDOM_SEED)
+    )
 
 
-def period_horizons():
-    """Return the report periods and their expected day counts."""
-    predict.TODAY = TEST_DATE
-    return {
-        "Day": 1,
-        "Week": 7,
-        "Month": predict.month_length(TEST_DATE),
-        "Year": predict.year_length(TEST_DATE),
-    }
-
-
-def report_rows(alpha, beta, pace):
-    """Print a report and parse its Day/Week/Month/Year rows."""
+def report(pace):
     output = io.StringIO()
-    with redirect_stdout(output):
-        predict.print_report(alpha, beta, pace, MIN_EFFORT)
+    with (
+        patch.object(predict, "TODAY", TEST_DATE),
+        patch.object(predict, "SIMULATIONS", SIMULATIONS),
+        redirect_stdout(output),
+    ):
+        predict.print_report(parse_history(), pace)
+    return output.getvalue()
 
+
+def report_rows(text):
     rows = {}
-    for line in output.getvalue().splitlines():
-        parts = line.split()
-        if len(parts) == 3 and parts[0] in HORIZON_NAMES:
-            rows[parts[0]] = (float(parts[1]), float(parts[2].rstrip("%")))
+    for line in text.splitlines():
+        parts = line.replace("±", "").split()
+        if parts and parts[0] in HORIZONS:
+            rows[parts[0]] = (
+                float(parts[1]),
+                float(parts[2].rstrip("%")),
+                float(parts[3]),
+            )
     return rows
 
 
-def zero_pace_report_rows():
-    """Return the parsed report rows of print_report(alpha, beta, 0.0)."""
-    horizons = period_horizons()
-    alpha, beta = synthetic_posterior()
-    rows = report_rows(alpha, beta, 0.0)
-    assert set(rows) == set(horizons)
-    return rows
+def test_history_includes_inactivity_through_today():
+    assert parse_history().daily == DAILY
 
 
-# --- Posterior ----------------------------------------------------------------
-
-
-def test_posterior_derivation_from_done_history():
-    """Done-file totals and span map to the history's (total, span)."""
-    with tempfile.TemporaryDirectory() as tmp:
-        done_file = Path(tmp) / "done.txt"
-        done_file.write_text("".join(DONE_LINES), encoding="utf-8")
-        history = predict.parse_done(str(done_file))
-
-    assert history.total == TOTAL_EFFORT
-    assert history.span == SPAN_DAYS
-    assert history.min_effort == MIN_EFFORT
-
-
-def test_posterior_maps_total_and_span_to_gamma_shape():
-    """posterior() maps (total, span) to Gamma(1 + total, 1 + span)."""
-    assert predict.posterior(TOTAL_EFFORT, SPAN_DAYS) == (
-        1 + TOTAL_EFFORT,
-        1 + SPAN_DAYS,
+def test_history_total_and_window():
+    history = parse_history()
+    assert (history.total, history.start, history.span) == (
+        10.5, date(2026, 11, 12), 10
     )
 
 
-def test_posterior_mean_matches_gamma_mean():
-    """The posterior rate is the Gamma mean, alpha / beta."""
-    alpha, beta = synthetic_posterior()
-    assert alpha / beta == (1 + TOTAL_EFFORT) / (1 + SPAN_DAYS)
+def test_history_statistics_include_zero_days():
+    history = parse_history()
+    assert (history.mean, history.median, history.zero_days,
+            history.zero_frequency) == (1.05, 0.0, 7, 0.7)
 
 
-# --- Maintainability ----------------------------------------------------------
+def test_history_population_deviation():
+    assert math.isclose(parse_history().stdev, math.sqrt(2.6225))
 
 
-def test_pace_below_posterior_is_at_least_as_likely_as_posterior():
-    """Paces below the posterior mean are no less maintainable on Day."""
-    alpha, beta = synthetic_posterior()
-    lam = alpha / beta
-    at_mean = maintained(alpha, beta, 1, lam)
-
-    for fraction in PACE_FRACTIONS:
-        probability = maintained(alpha, beta, 1, fraction * lam)
-        assert probability >= at_mean, (
-            f"fraction={fraction}: P={probability:.6f} < "
-            f"P at posterior mean={at_mean:.6f}"
-        )
+def test_same_day_effort_is_aggregated():
+    history = parse_history(
+        "x 2026-11-21 effort:1.25\nx 2026-11-21 effort:2.5\n"
+    )
+    assert history.daily == [3.75]
 
 
-def test_maintainability_probability_is_bounded():
-    """Maintainability probabilities stay within [0, 1]."""
-    alpha, beta = synthetic_posterior()
-    lam = alpha / beta
+def test_invalid_and_future_records_are_excluded():
+    history = parse_history(
+        "unfinished effort:9\n"
+        "x bad-date effort:9\n"
+        "x 2026-11-20 missing-effort\n"
+        "x 2026-11-20 effort:-1\n"
+        "x 2026-11-20 effort:bad effort:9\n"
+        "x 2026-11-22 effort:9\n"
+        "x 2026-11-21 effort:2 effort:9\n"
+    )
+    assert history.daily == [2.0]
 
-    for fraction in PACE_FRACTIONS:
-        probability = maintained(alpha, beta, 1, fraction * lam)
-        assert 0.0 <= probability <= 1.0
 
-
-def test_pace_above_minimum_is_less_likely_than_minimum():
-    """A pace above the minimum is less maintainable than the minimum."""
-    alpha, beta = synthetic_posterior()
-
-    assert maintained(alpha, beta, 1, MIN_EFFORT * 1.5) < maintained(
-        alpha, beta, 1, MIN_EFFORT
+def test_history_without_valid_effort_is_rejected():
+    with patch.object(predict, "fail", side_effect=ValueError) as fail:
+        try:
+            parse_history("x 2026-11-21 no-effort\n")
+        except ValueError:
+            pass
+    assert fail.call_args.args == (
+        "No valid effort records found in done file: synthetic-done.txt",
     )
 
 
-# --- Report columns ------------------------------------------------------------
+def test_calendar_horizons():
+    assert (
+        predict.month_length(TEST_DATE), predict.year_length(TEST_DATE),
+        predict.month_length(date(2024, 2, 1)),
+        predict.year_length(date(2024, 2, 1)),
+    ) == (30, 365, 29, 366)
 
 
-def test_report_rows_cover_all_periods():
-    """The report prints a row for each of the periods."""
-    horizons = period_horizons()
-    alpha, beta = synthetic_posterior()
-    rows = report_rows(alpha, beta, alpha / beta)
-    assert set(rows) == set(horizons)
+def test_bootstrap_preserves_contiguous_blocks():
+    # Every two-day contiguous block sums to 10, unlike independent draws.
+    rng = random.Random(0)
+    totals = [predict.bootstrap_sum([0, 10, 0, 10], 4, 2, rng)
+              for _ in range(100)]
+    assert set(totals) == {20.0}
 
 
-def test_report_target_velocity_column_is_pace_times_horizon():
-    """Each row's Target velocity is pace * horizon days."""
-    horizons = period_horizons()
-    alpha, beta = synthetic_posterior()
-    pace = alpha / beta
-    rows = report_rows(alpha, beta, pace)
-
-    for name, days in horizons.items():
-        target, _percentage = rows[name]
-        assert math.isclose(target, pace * days, rel_tol=0.0, abs_tol=TARGET_TOL), (
-            f"{name}: target velocity {target} != pace {pace} * horizon {days}"
-        )
+def test_bootstrap_truncates_final_block():
+    assert predict.bootstrap_sum([2.0] * 7, 10, 7, random.Random(0)) == 20.0
 
 
-def test_report_p_maintain_column_matches_model():
-    """Each row's P(maintain) is maintained_prob(horizon) * 100."""
-    horizons = period_horizons()
-    alpha, beta = synthetic_posterior()
-    pace = alpha / beta
-    rows = report_rows(alpha, beta, pace)
-
-    for name, days in horizons.items():
-        _target, percentage = rows[name]
-        expected = maintained(alpha, beta, days, pace) * 100
-        assert math.isclose(percentage, expected, rel_tol=0.0, abs_tol=REPORT_P_TOL), (
-            f"{name}: P(maintain) {percentage} != expected {expected}"
-        )
+def test_short_history_supports_long_horizons():
+    assert simulate([2.0], 365, 2.0) == (1.0, 0.0)
 
 
-# --- Zero pace ------------------------------------------------------------------
+def test_zero_pace_is_certain():
+    assert all(simulate(DAILY, days, 0.0) == (1.0, 0.0)
+               for days in HORIZONS.values())
 
 
-def test_maintained_prob_of_zero_pace_is_one():
-    """A zero pace gives 100% maintainability for every horizon."""
-    alpha, beta = synthetic_posterior()
-    horizons = period_horizons()
-
-    for days in horizons.values():
-        for pace in (0, 0.0, -0.0):
-            assert math.isclose(
-                maintained(alpha, beta, days, pace), 1.0, rel_tol=0.0, abs_tol=ZERO_P_TOL
-            ), f"days={days} pace={pace}: expected P ~ 1.0"
+def test_constant_effort_meets_equal_target():
+    assert simulate([2.0] * 10, 30, 2.0) == (1.0, 0.0)
 
 
-def test_report_at_zero_pace_has_zero_target_velocity():
-    """The zero-pace report prints zero Target velocity per period."""
-    for name, (target, _percentage) in zero_pace_report_rows().items():
-        assert math.isclose(target, 0.0, rel_tol=0.0, abs_tol=TARGET_TOL), (
-            f"{name}: target velocity {target}, expected 0.0"
-        )
+def test_target_above_every_observation_is_impossible():
+    assert simulate(DAILY, 30, 4.1) == (0.0, 0.0)
 
 
-def test_report_at_zero_pace_prints_hundred_percent():
-    """The zero-pace report prints P(maintain) = 100.0% per period."""
-    for name, (_target, percentage) in zero_pace_report_rows().items():
-        assert math.isclose(
-            percentage, 100.0, rel_tol=0.0, abs_tol=ZERO_PCT_TOL
-        ), f"{name}: expected 100.0%, got {percentage}%"
+def test_all_zero_history_has_no_positive_capacity():
+    assert simulate([0.0] * 10, 7, 0.1) == (0.0, 0.0)
 
 
-# --- Minimum-effort pace ----------------------------------------------------------
+def test_day_probability_matches_known_frequency():
+    # Exactly three of ten historical days meet a target of 3.
+    probability, _ = simulate(DAILY, 1, 3.0)
+    assert abs(probability - 0.3) < 0.05
 
 
-def test_maintained_prob_at_min_effort_is_one():
-    """A pace equal to the dataset's minimum effort is fully maintainable."""
-    alpha, beta = synthetic_posterior()
-    horizons = period_horizons()
-
-    for days in horizons.values():
-        probability = maintained(alpha, beta, days, MIN_EFFORT)
-        assert math.isclose(
-            probability, 1.0, rel_tol=0.0, abs_tol=ZERO_P_TOL
-        ), f"days={days} pace={MIN_EFFORT}: expected P ~ 1.0, got {probability:.6f}"
+def test_probability_and_mc_error_are_bounded():
+    results = [simulate(DAILY, days, pace)
+               for days in HORIZONS.values() for pace in (0.0, 0.5, 1.5, 4.1)]
+    assert all(0 <= p <= 1 and 0 <= error <= 0.5 / math.sqrt(SIMULATIONS)
+               for p, error in results)
 
 
-def test_pace_below_minimum_is_fully_maintainable():
-    """Every pace below the dataset minimum is fully maintainable."""
-    alpha, beta = synthetic_posterior()
-    horizons = period_horizons()
-
-    for days in horizons.values():
-        for pace in (0.0, 0.5 * MIN_EFFORT):
-            assert math.isclose(
-                maintained(alpha, beta, days, pace), 1.0, rel_tol=0.0, abs_tol=ZERO_P_TOL
-            ), f"days={days} pace={pace}: expected P ~ 1.0"
+def test_mc_error_matches_binomial_sampling_error():
+    probability, error = simulate(DAILY, 1, 3.0)
+    assert math.isclose(
+        error, math.sqrt(probability * (1 - probability) / SIMULATIONS)
+    )
 
 
-def test_report_at_min_effort_prints_hundred_percent():
-    """The report shows 100% for a pace equal to the minimum effort value."""
-    alpha, beta = synthetic_posterior()
-    horizons = period_horizons()
-    rows = report_rows(alpha, beta, MIN_EFFORT)
-    assert set(rows) == set(horizons)
-
-    for name, (_target, percentage) in rows.items():
-        assert math.isclose(
-            percentage, 100.0, rel_tol=0.0, abs_tol=ZERO_PCT_TOL
-        ), f"{name}: expected 100.0%, got {percentage}%"
+def test_predictions_are_reproducible():
+    assert simulate(DAILY, 30, 1.0) == simulate(DAILY, 30, 1.0)
 
 
-# --- Decreasing pace -------------------------------------------------------------
+def test_lower_targets_never_reduce_probability():
+    # Resetting the seed compares targets against identical simulated futures.
+    ladder = (4.1, 3.5, 3.0, 1.5, 1.0, 0.5, 0.0)
+    probabilities = [[simulate(DAILY, days, pace)[0] for pace in ladder]
+                     for days in HORIZONS.values()]
+    assert all(lower >= higher for values in probabilities
+               for higher, lower in zip(values, values[1:]))
 
 
-def test_decreasing_pace_toward_minimum_increases_p():
-    """Maintainability strictly increases as pace decreases toward the minimum."""
-    alpha, beta = synthetic_posterior()
-    ladder = [fraction * MIN_EFFORT for fraction in DECREASING_PACE_FRACTIONS]
-
-    for higher, lower in zip(ladder, ladder[1:]):
-        assert higher > lower
-        assert maintained(alpha, beta, 1, lower) > maintained(
-            alpha, beta, 1, higher
-        ), f"decreasing pace from {higher:.4f} to {lower:.4f} did not increase P"
+def test_discrete_observations_allow_probability_plateaus():
+    assert simulate(DAILY, 1, 3.1) == simulate(DAILY, 1, 3.2)
 
 
-# --- Standalone runner (no third-party packages needed) ----------------------------
+def test_report_covers_all_periods():
+    assert set(report_rows(report(1.0))) == set(HORIZONS)
+
+
+def test_report_target_effort():
+    rows = report_rows(report(1.5))
+    assert all(rows[name][0] == 1.5 * days for name, days in HORIZONS.items())
+
+
+def test_report_probabilities_and_errors_match_simulation():
+    rows = report_rows(report(1.0))
+    rng = random.Random(predict.RANDOM_SEED)
+    expected = {
+        name: predict.simulate_probability(DAILY, days, 1.0, SIMULATIONS, rng)
+        for name, days in HORIZONS.items()
+    }
+    assert all(abs(rows[name][1] - p * 100) <= 0.051
+               and abs(rows[name][2] - error * 100) <= 0.0051
+               for name, (p, error) in expected.items())
+
+
+def test_zero_pace_report():
+    assert set(report_rows(report(0.0)).values()) == {(0.0, 100.0, 0.0)}
+
+
+def test_report_is_reproducible():
+    assert report(1.0) == report(1.0)
+
+
+def test_direct_execution_help_needs_no_history():
+    result = subprocess.run(
+        [str(ACTION), "usage"], capture_output=True, text=True,
+        env={**os.environ, "DONE_FILE": "/nonexistent/predict-history"},
+    )
+    assert result.returncode == 0 and "predict pace" in result.stdout
 
 
 def _run_standalone():
-    """Run the tests without requiring pytest."""
     tests = sorted(
-        (name, fn)
-        for name, fn in globals().items()
+        (name, fn) for name, fn in globals().items()
         if name.startswith("test_") and callable(fn)
     )
     failures = []
-
     for name, test in tests:
         try:
             test()
-        except AssertionError:
+        except Exception:
             failures.append(name)
+            traceback.print_exc()
             print(f"FAIL {name}", file=sys.stderr)
         else:
             print(f"PASS {name}")
-
-    if failures:
-        print(
-            f"\n{len(failures)} of {len(tests)} scenario(s) failed: "
-            f"{', '.join(failures)}",
-            file=sys.stderr,
-        )
-        return 1
-
-    print(f"\nAll {len(tests)} scenario(s) passed.")
-    return 0
+    print(f"\n{len(tests) - len(failures)}/{len(tests)} tests passed.")
+    return int(bool(failures))
 
 
 if __name__ == "__main__":
