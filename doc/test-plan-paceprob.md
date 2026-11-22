@@ -284,7 +284,7 @@ tol) × 100 (±0.1).
 
 | ID | Scenario | Expected result | Status |
 | --- | --- | --- | --- |
-| X1 | Checksums of `todo-test/done.txt` and `todo-test/todo.txt` before/after `todo.sh -d cfg paceprob` | identical (also at extreme paces/tolerances from §8) | existing |
+| X1 | Checksums of `todo-test/done.txt` and `todo-test/todo.txt` before/after `todo.sh -d cfg paceprob` | identical (create `todo.txt` first if absent — todo.sh never opens it for this action; also check at extreme paces/tolerances from §8) | existing |
 
 ### 6.9 Monotonicity rule (R8)
 

@@ -134,7 +134,7 @@ def maintained_prob(alpha, beta, days, pace):
     if target <= 0:
         return 1.0
     mu = days * alpha / beta
-    sd = math.sqrt(days * alpha / beta + days * days * alpha / (beta * beta))
+    sd = math.sqrt(mu + days * days * alpha / (beta * beta))
     z = (mu - target) / sd
     return 0.5 * math.erfc(-z / math.sqrt(2))
 
