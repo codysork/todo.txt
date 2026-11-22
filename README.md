@@ -1,116 +1,79 @@
-# `~/.todo` — todo.txt configuration and productivity suite
+# todo.txt Productivity Suite
 
-Scope: configuration, custom actions (add-ons), and output filters for
-[todo.txt-cli](https://github.com/todotxt/todo.txt).
+A collection of configuration, add-ons, and filters for [todo.txt-cli](https://github.com/todotxt/todo.txt). It adds threshold-based scheduling, recurring routines, completion reports, and task views while keeping your todo data separate from the repository.
 
-Task data lives in `$HOME/Sync/Todo` (`TODO_DIR`) and is **not** tracked in git.
-This repo is the dotfiles repo (tracked at `.todo/`), with `AGENTS.md` holding
-the conventions documented below.
+## Features
 
-## Layout
+- **Threshold scheduling:** Set a `t:` date to keep a task hidden until it is ready to appear. Tasks with future thresholds are hidden from the normal list and can be shown with `todo.sh -x`.
+- **Recurring routines:** Tag tasks with a frequency such as `@Routine:weekly` and set their next threshold.
+- **Completion tracking:** `pace` reports completed effort points over time; `paceprob` estimates the probability of maintaining a target pace.
+- **Task management:** Add tasks through a desktop dialog with `popup`, repeat completed tasks with `repeat`, and view due tasks with `today`.
+- **Kanban groundwork:** `kanban` identifies tasks for board columns, but does not yet draw the board.
+
+## Repository layout
 
 | Path | Purpose |
 | --- | --- |
-| `config` | todo.sh configuration, sourced on every run; defines paths, colors, sort/final filter, behavior |
-| `actions/` | Executable add-ons; each filename is the `todo.sh` subcommand name |
-| `filters/` | Executable stdin→stdout filters (currently `futureTasks`, wired via `TODOTXT_FINAL_FILTER`) |
-| `doc/` | Analysis docs, e.g. `test-plan-paceprob.md` |
-| `tests/` | Executable specifications for the suite |
+| `config` | todo.sh configuration, including paths, colors, sorting, and the final filter |
+| `actions/` | Executable todo.txt-cli add-ons |
+| `filters/` | Executable filters for todo.txt-cli output |
+| `tests/` | Tests and executable specifications |
+| `doc/` | Design notes and test plans |
 
-## The suite
+The repository contains configuration and code, not task data. By default, task files are stored under `$HOME/Sync/Todo` and are not tracked in git.
 
-### Configured behavior (`config`)
+## Add-ons
 
-- Data locations: `TODO_DIR="$HOME/Sync/Todo"`, `TODO_FILE=$TODO_DIR/todo.txt`,
-  `DONE_FILE=$TODO_DIR/done.txt`, `REPORT_FILE=$TODO_DIR/report.txt`,
-  `TODO_ACTIONS_DIR=$HOME/.todo/actions`.
-- Colors: `PRI_A`=pink (urgent, important, do now), `PRI_B`=yellow,
-  `PRI_C`=green, `PRI_D`=light blue, `PRI_E`=white, `PRI_W`=light grey (waiting).
-- Sort: `TODOTXT_SORT_COMMAND` sorts `todo.sh list` output by the `t:`
-  threshold; undated tasks sort first (`0000-00-00`).
-- Final filter: `TODOTXT_FINAL_FILTER=$HOME/.todo/filters/futureTasks` — hides
-  tasks whose `t:YYYY-MM-DD` threshold is in the future (visible again with
-  `todo.sh -x`).
-
-### Add-ons (`actions/`)
-
-| Action | Purpose |
+| Command | What it does |
 | --- | --- |
-| `kanban` | Kanban board over the contexts `@Routine:[A-Za-z]*`, `@Todo`, `@Doing`, plus a backlog column. Status: skeleton — computes board geometry but the board is not drawn yet. |
-| `pace` | Story-point velocity report: sums `effort:` values from completions in `done.txt`; prints points/day per period. Usage: `todo.sh pace [daily\|weekly\|monthly\|annual] [count]`. |
-| `paceprob` | Bayesian probability (%) of maintaining a target pace, computed from `done.txt` history (reads only `done.txt`). Usage: `todo.sh paceprob [pace] [tolerance]`; defaults are the posterior-mean pace and a 20% band; periods Day/Week/Month/Year. |
-| `popup` | Add a task via a kdialog inputbox ("Add Todo Task"); `notify-send` confirms or reports failure. |
-| `repeat` | Mark an item complete and immediately re-add it: `todo.sh repeat ITEM [DATE\|DAY]`; the optional date reschedules its threshold via `schedule`. |
-| `routine` | Set or show `@Routine:<frequency>` tags: `todo.sh routine set <frequency> <task-number> [<date>\|<day>]`, `todo.sh routine show <frequency>\|all`. Frequencies: `daily weekly monthly quarterly yearly irregular`. Adds `(R)` if the task has no priority, then sets the `t:` threshold via `schedule`. |
-| `schedule` | Set, move or remove `t:` thresholds: `todo.sh schedule <item> <date>`, `todo.sh schedule <item> mv <date>`, `todo.sh schedule <item> rm`, or schedule every task of one priority: `todo.sh schedule R <date>`. With no arguments it lists scheduled tasks. |
-| `today` | Show tasks whose threshold is on or before today: `todo.sh today [TERM...]`. |
+| `todo.sh today [TERM...]` | Shows tasks whose threshold is today or earlier |
+| `todo.sh schedule` | Lists scheduled tasks |
+| `todo.sh schedule <item> <date>` | Sets a task’s threshold |
+| `todo.sh schedule <item> mv <date>` | Moves a task’s threshold |
+| `todo.sh schedule <item> rm` | Removes a task’s threshold |
+| `todo.sh schedule R <date>` | Schedules every task of the specified priority |
+| `todo.sh routine set <frequency> <task-number> [<date>\|<day>]` | Sets a routine frequency and threshold |
+| `todo.sh routine show <frequency>\|all` | Lists routine tasks |
+| `todo.sh repeat ITEM [DATE\|DAY]` | Completes and re-adds a task, optionally rescheduling its threshold |
+| `todo.sh pace [daily\|weekly\|monthly\|annual] [count]` | Reports completed effort points per day for each period |
+| `todo.sh paceprob [pace] [tolerance]` | Estimates the probability of maintaining a pace; defaults to the posterior-mean pace and a 20% band |
+| `todo.sh popup` | Opens a dialog to add a task |
+| `todo.sh kanban` | Identifies tasks for the board’s columns; board rendering is not implemented yet |
 
-### How the pieces compose
+All add-ons support `usage`, `help`, `-h`, and `--help`. The main CLI’s `help`, `shorthelp`, and `listaddons` commands also provide help and add-on listings.
 
-- `routine` ↔ `schedule`: routine tasks are recurring threshold-scheduled
-  tasks; `routine set` sets the tag and the threshold.
-- `repeat` ↔ `schedule`: repeating items can be rescheduled at each cycle.
-- `today` ↔ `futureTasks`: threshold-aware "what's due today" view.
-- `pace` + `paceprob`: completed `effort:` values feed both the velocity report
-  and the probability model.
+## Task conventions
 
-### Data model highlights
+Tasks use todo.txt conventions: priorities such as `(A)`, project tags such as `+Project`, and context tags such as `@Context`. This suite also uses:
 
-- Priorities `(A)`–`(Z)`, `+Project` and `@Context` tags.
-- Metadata: `t:YYYY-MM-DD` (threshold), `due:YYYY-MM-DD`, scoring fields
-  `effort:`/`hassle:`/`uplift:` (decimals).
-- Routine tasks: `@Routine:<frequency>` (`daily`, `weekly`, `monthly`,
-  `quarterly`, `yearly`, `irregular`).
-- `futureTasks`: stdin→stdout filter hiding future-threshold lines; intended as
-  the `TODOTXT_FINAL_FILTER`.
+- `t:YYYY-MM-DD` for a threshold date
+- `due:YYYY-MM-DD` for a due date
+- `effort:` for decimal scoring values
+- `@Routine:<frequency>` for a routine frequency: `daily`, `weekly`, `monthly`, `quarterly`, `yearly`, or `irregular`
 
-### Help contract
+The configuration sorts tasks by threshold date, with undated tasks first. Its final filter hides tasks whose threshold is in the future. Use `todo.sh -x` to show those tasks.
 
-- Every action handles `usage`/`help`/`-h`/`--help`: prints indented help to
-  stdout and exits 0. `todo.sh help`, `todo.sh shorthelp` and
-  `todo.sh listaddons` list the suite.
-- Add-ons should resolve the CLI and data paths themselves so they also work
-  standalone, per `~/.todo/AGENTS.md`:
-  `TODO_CMD="${TODO_FULL_SH:-${TODO_SH:-todo.sh}}"`
-  `TODO_FILE="${TODO_FILE:-${TODO_DIR:-$HOME}/todo.txt}"`
+## Setup
 
-## Tests and docs
+1. Install and configure [todo.txt-cli](https://github.com/todotxt/todo.txt).
+2. Place this repository at `~/.todo` or link it there.
+3. Ensure the add-ons and filter are executable.
+4. Set your task-data location in `config` if you do not want to use the default `$HOME/Sync/Todo`.
+5. Configure todo.txt-cli to load `~/.todo/config` and use `~/.todo/actions` as its add-ons directory.
 
-- `tests/test_paceprob.py` — executable spec for `paceprob`
-  (`python -m pytest tests/test_paceprob.py -v` or `python tests/test_paceprob.py`).
-  Status per `doc/test-plan-paceprob.md` §2 (observed 2026-11-21): **6 passed,
-  2 failed** — `S7` (pace 0 → 100% maintain) and `S8` (strictly decreasing
-  P) fail against the current `maintained_prob` implementation. See
-  `doc/test-plan-paceprob.md` §9 for the intended behavior (fail-first
-  scenarios, expected fixes).
-- `doc/test-plan-paceprob.md` — plan-only document: fixtures, requirements,
-  scenario tables and "current behavior" notes.
+Add-ons resolve the todo.sh command and task-file paths themselves, so they can also be run outside the usual add-on setup.
 
-## Validating changes
+## Tests and current status
 
-```sh
-cd ~/.todo
+Run the `paceprob` tests with:
 
-# Syntax / lint
-bash -n actions/<name>
-shellcheck actions/<name>            # when available
-python -m py_compile filters/futureTasks
-
-# Help contract (todo.sh invokes "<action> usage")
-todo.sh help <name>
-todo.sh shorthelp
-todo.sh listaddons
-
-# Exercise against a scratch config so real tasks are untouched
-todo.sh -d /tmp/todo-test.cfg <name> ...
+```bash
+python -m pytest tests/test_paceprob.py -v
 ```
 
-New add-ons should follow the header convention (`@file`, `@author`,
-`@created`, `@modified`, `@description` or `@purpose`, `Usage:` examples) and
-the conventions in `~/.todo/AGENTS.md`.
+Or run the test file directly:
 
-## Noted gaps
+```bash
+python tests/test_paceprob.py
+```
 
-- `~/.todo/AGENTS.md` "Current actions" list omits `paceprob` although
-  `actions/paceprob` exists (same observation as `doc/test-plan-paceprob.md`
-  §10).
