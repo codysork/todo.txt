@@ -1,0 +1,43 @@
+#!/bin/bash
+# @file todo-popup.sh
+# @author Cody Sork <codysork@gmail.com> with help from AI agents.
+# @created 2026-11-05
+# @modified 2026-11-20
+# @purpose Add a task to todo.txt using a graphical popup.
+
+TODO_SH="todo.sh"
+
+# todo.sh calls add-on actions with "usage" when building help output,
+# but passes the action name first for normal invocations.
+if [ "${1:-}" = "popup" ]; then
+    shift
+fi
+
+# Answer help requests without opening the dialog.
+case "${1:-}" in
+    usage|help|-h|--help)
+        cat <<EOF
+  popup
+    Add a task to todo.txt using a graphical popup.
+EOF
+        exit 0
+        ;;
+esac
+
+# Request task description
+task=$(kdialog \
+    --title "Add Todo Task" \
+    --inputbox "Enter a new task:")
+
+# Exit if cancelled or empty
+if [[ $? -ne 0 || -z "$task" ]]; then
+    exit 0
+fi
+
+# Add task
+if "$TODO_SH" add "$task"; then
+    notify-send "Todo" "Task added: $task"
+else
+    notify-send -u critical "Todo" "Failed to add task."
+    exit 1
+fi

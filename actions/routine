@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+#
+# @file routine (todo.sh action)
+# @author Cody Sork <codysork@gmail.com> with help from AI agents
+# @created 2026-11-20
+# @modified 2026-11-20
+# @description Set or show @Routine:<frequency> tags.
+
+set -uo pipefail
+
+TODO_CMD="${TODO_FULL_SH:-${TODO_SH:-todo.sh}}"
+TODO_FILE="${TODO_FILE:-${TODO_DIR:-$HOME}/todo.txt}"
+TODO_SH_NAME="${TODO_SH:-todo.sh}"
+self=$(basename "$0")
+
+function usage {
+	cat <<EOF
+  $self set <frequency> <task-number> [<date>|<day>]
+    Add or replace @Routine:<frequency> on a task, add (R) if the task
+    has no priority, and set its threshold with todo schedule.
+    The threshold defaults to today.
+
+  $self show <frequency>
+  $self show all
+    Show active tasks tagged @Routine:<frequency>, or across every
+    frequency with "all". Tasks hidden by the configured final filter
+    (for example, future threshold dates) are omitted unless todo.sh is
+    run with -x.
+
+    Frequencies: daily weekly monthly quarterly yearly irregular
+
+    Examples:
+      \$ $TODO_SH_NAME $self set daily 42 tomorrow
+      \$ $TODO_SH_NAME $self set weekly 43 "next monday"
+      \$ $TODO_SH_NAME $self set monthly 44
+      \$ $TODO_SH_NAME $self show daily
+      \$ $TODO_SH_NAME $self show all
+EOF
+}
+
+function fail {
+	echo "Routine: $*" >&2
+	exit 1
+}
+
+function valid_frequency {
+	local frequency=$1
+	[[ "$frequency" =~ ^[a-z][a-z0-9_-]*$ ]]
+}
+
+function schedule_installed {
+	local this_dir
+	this_dir=$(dirname "$0")
+	local actions_dirs="${TODO_ACTIONS_DIR:-$HOME/.todo/actions:$HOME/.todo.actions.d:${XDG_CONFIG_HOME:-$HOME/.config}/todo/actions}"
+	local dir
+	local old_ifs=$IFS
+	IFS=':'
+	for dir in "$this_dir" $actions_dirs; do
+		[ -z "$dir" ] && continue
+		if [ -x "$dir/schedule" ] || [ -x "$dir/schedule/schedule" ]; then
+			IFS=$old_ifs
+			return 0
+		fi
+	done
+	IFS=$old_ifs
+	return 1
+}
+
+function set_routine {
+	local frequency=${1:-}
+	local number=${2:-}
+	local date="${*:3}"
+	local task
+
+	[ -n "$frequency" ] || { usage; exit 1; }
+	[ -n "$number" ] || { usage; exit 1; }
+
+	frequency=${frequency,,}
+	valid_frequency "$frequency" || fail "invalid frequency '$frequency'"
+
+	[[ "$number" =~ ^[0-9]+$ ]] || fail "invalid task number '$number'"
+	number=$((10#$number))
+	((number >= 1)) || fail "invalid task number '$number'"
+
+	[ -z "$date" ] && date="today"
+	date -d "$date" +%F >/dev/null 2>&1 || fail "invalid date/day '$date'"
+
+	task=$(sed -n "${number}p" "$TODO_FILE")
+	[ -n "$task" ] || fail "no task numbered $number"
+
+	# Normalize leading/trailing whitespace before inspecting the task.
+	task=$(printf '%s\n' "$task" | sed -E -e 's/^[[:space:]]+//' -e 's/[[:space:]]+$//')
+	[ -n "$task" ] || fail "no task numbered $number"
+
+	[[ "$task" == x\ * ]] && fail "task $number is already complete"
+
+	schedule_installed || fail "'schedule' action is not installed"
+
+	# Add a default priority when none is present.
+	if [[ ! "$task" =~ ^\([A-Za-z]\)[[:space:]] ]]; then
+		task="(R) $task"
+	fi
+
+	# Replace any existing combined routine tag.
+	task=$(printf '%s\n' "$task" | sed -E \
+		-e 's/(^|[[:space:]])@Routine:[^[:space:]]+//g' \
+		-e 's/[[:space:]]+$//')
+	task="$task @Routine:$frequency"
+
+	TODOTXT_VERBOSE=0 "$TODO_CMD" replace "$number" "$task" || fail "could not update task $number"
+	"$TODO_CMD" schedule "$number" "$date" || fail "could not schedule task $number"
+}
+
+function show_routine {
+	local frequency=${1:-}
+	local output
+
+	[ -n "$frequency" ] || { usage; exit 1; }
+	[ $# -eq 1 ] || fail "unexpected argument '${*:2}'"
+
+	frequency=${frequency,,}
+
+	local tag label
+	if [ "$frequency" = "all" ]; then
+		tag="@Routine:"
+		label="routine tasks"
+	else
+		valid_frequency "$frequency" || fail "invalid frequency '$frequency'"
+		tag="@Routine:$frequency"
+		label="tasks in the $frequency routine"
+	fi
+
+	output=$(TODOTXT_VERBOSE=0 "$TODO_CMD" list "$tag") ||
+		fail "could not query tasks"
+
+	# Hide completed tasks while preserving the formatted/colored lines.
+	output=$(printf '%s\n' "$output" | awk '
+		{
+			plain = $0
+			gsub(/\033\[[0-9;]*m/, "", plain)
+			if (plain !~ /^[[:space:]]*[0-9]+ x /) print
+		}
+	')
+
+	if [ -z "$output" ]; then
+		echo "No $label."
+	else
+		printf '%s\n' "$output"
+	fi
+}
+
+# todo.sh invokes custom actions with the action name as the first argument.
+if [ "${1:-}" = "$self" ]; then
+	shift
+fi
+
+sub=${1:-}
+shift || true
+
+case "$sub" in
+	set)
+		set_routine "$@"
+		;;
+	show)
+		show_routine "$@"
+		;;
+	usage|help|-h|--help|"")
+		usage
+		;;
+	*)
+		echo "Routine: unknown command '$sub'" >&2
+		usage >&2
+		exit 1
+		;;
+esac
