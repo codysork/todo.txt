@@ -3,9 +3,9 @@
 # @file predict (todo.sh action)
 # @author Cody Sork <codysork@gmail.com> with help from AI agents
 # @created 2026-11-21
-# @modified 2026-11-21
-# @description Estimate the probability (%) of maintaining a pace,
-#              using historical daily effort and bootstrap simulation.
+# @modified 2026-11-22
+# @description Estimate the probability (%) of averaging a target pace,
+#              using historical effort-entry days and bootstrap simulation.
 #
 # Usage:
 #   todo.sh predict pace [pace]
@@ -13,8 +13,8 @@
 #   pace       target daily effort rate (default: historical mean)
 #
 # Model:
-#   Circular moving-block bootstrap of historical daily effort.
-#   Contiguous blocks preserve short-term patterns in productivity.
+#   Circular moving-block bootstrap of daily effort entries.
+#   Success is total simulated effort >= pace * calendar days.
 #
 # Dependencies: Python standard library only.
 
@@ -53,7 +53,7 @@ EFFORT_RE = re.compile(r"^effort:([0-9]+(?:\.[0-9]+)?)$")
 
 def usage():
     print("  predict")
-    print("    Estimate the probability of meeting a pace every day.")
+    print("    Estimate the probability of averaging a target pace.")
     print("      Modes:")
     print("        pace       predict maintainability")
     print("          pace     target daily effort (default: historical mean)")
@@ -123,10 +123,8 @@ def parse_done(path):
     """
     Read completed tasks and aggregate effort by calendar day.
 
-    Only entries with valid effort metadata are included.
-    Days without completed effort are represented as zero.
-    The observation window extends through today, including
-    recent inactivity.
+    Completed dates with valid effort metadata are included and aggregated.
+    Dates without a valid effort entry are not observations.
     """
 
     if not os.path.isfile(path) or not os.access(path, os.R_OK):
@@ -180,13 +178,8 @@ def parse_done(path):
     if first is None:
         fail(f"No valid effort records found in done file: {path}")
 
-    span = (TODAY - first).days + 1
-
-    # Build a continuous daily time series.
-    values = [
-        daily.get(first + timedelta(days=i), 0.0)
-        for i in range(span)
-    ]
+    # Sample recorded effort days only; gaps in the calendar are not zeros.
+    values = [daily[d] for d in sorted(daily)]
 
     total = math.fsum(values)
 
@@ -214,24 +207,22 @@ def bootstrap_days(daily, days, block_size, rng):
 
 
 def simulate_probability(daily, days, pace, simulations, rng):
-    """Return probability and MC error for meeting the pace every day."""
+    """Return probability and MC error for meeting average pace over a period."""
     return simulate_probabilities(daily, (days,), pace, simulations, rng)[days]
 
 
 def simulate_probabilities(daily, horizons, pace, simulations, rng):
-    """Evaluate all horizons on shared paths, so success events are nested."""
+    """Estimate average-pace probabilities on shared simulated paths."""
     horizons = sorted(set(horizons))
     block_size = min(BLOCK_DAYS, len(daily))
     successes = dict.fromkeys(horizons, 0)
 
     for _ in range(simulations):
-        sustained = True
         path = bootstrap_days(daily, horizons[-1], block_size, rng)
-        # Consume the whole path even after failure, keeping random draws
-        # independent of pace when comparing targets with the same seed.
+        total = 0.0
         for day, effort in enumerate(path, start=1):
-            sustained = sustained and effort >= pace
-            if day in successes and sustained:
+            total += effort
+            if day in successes and total >= pace * day:
                 successes[day] += 1
 
     results = {}
@@ -266,13 +257,13 @@ def print_report(history, pace):
     print(f"Historical average: {history.mean:.2f} effort/day")
     print(f"Historical median:  {history.median:.2f} effort/day")
     print(f"Daily deviation:    {history.stdev:.2f} effort/day")
-    print(f"Zero-effort days:   {history.zero_frequency * 100:.1f}%")
-    print(f"Historical days:    {history.span}")
+    print(f"Zero-effort entries: {history.zero_frequency * 100:5.1f}%")
+    print(f"Effort-entry days:  {history.span}")
     print(f"Simulations:        {SIMULATIONS:,}")
     print(f"Block size:         {min(BLOCK_DAYS, history.span)} days")
     print()
 
-    print(f"{'Period':<9s} {'Pace/day':>15s} "
+    print(f"{'Period':<9s} {'Target effort':>15s} "
           f"{'P(maintain)':>15s} {'MC error':>12s}")
 
     print("-" * 55)
@@ -284,19 +275,20 @@ def print_report(history, pace):
 
     for name, days in horizons:
         probability, error = predictions[days]
+        target = pace * days
 
         print(
             f"{name:<9s} "
-            f"{pace:>15.2f} "
+            f"{target:>15.2f} "
             f"{probability * 100:>14.1f}% "
             f"±{error * 100:>9.2f} pp"
         )
 
     print()
     print("Interpretation:")
-    print("  Probability = chance of meeting or exceeding the")
-    print("  target daily pace on EVERY day of the specified period.")
-    print("  Extra effort on one day cannot make up for a shortfall on another.")
+    print("  Probability = chance of meeting or exceeding target")
+    print("  total effort (target pace × calendar days) over the period.")
+    print("  Extra effort can compensate for a lower-effort day.")
     print()
     print("  MC error = Monte Carlo sampling error only.")
     print("  It does not represent uncertainty in future productivity.")

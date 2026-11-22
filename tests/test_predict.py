@@ -24,7 +24,7 @@ DONE_TEXT = (
     "x 2026-11-13 effort:3.5\n"
     "x 2026-11-17 effort:4.0\n"
 )
-DAILY = [3.0, 3.5, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 0.0]
+EFFORT_DAYS = [3.0, 3.5, 4.0]
 HORIZONS = {"Day": 1, "Week": 7, "Month": 30, "Year": 365}
 SIMULATIONS = 1000
 
@@ -79,25 +79,25 @@ def report_rows(text):
     return rows
 
 
-def test_history_includes_inactivity_through_today():
-    assert parse_history().daily == DAILY
+def test_history_excludes_dates_without_effort_entries():
+    assert parse_history().daily == EFFORT_DAYS
 
 
-def test_history_total_and_window():
+def test_history_total_and_effort_entry_day_count():
     history = parse_history()
     assert (history.total, history.start, history.span) == (
-        10.5, date(2026, 11, 12), 10
+        10.5, date(2026, 11, 12), 3
     )
 
 
-def test_history_statistics_include_zero_days():
+def test_history_statistics_use_effort_entry_days():
     history = parse_history()
     assert (history.mean, history.median, history.zero_days,
-            history.zero_frequency) == (1.05, 0.0, 7, 0.7)
+            history.zero_frequency) == (3.5, 3.5, 0, 0.0)
 
 
 def test_history_population_deviation():
-    assert math.isclose(parse_history().stdev, math.sqrt(2.6225))
+    assert math.isclose(parse_history().stdev, math.sqrt(1 / 6))
 
 
 def test_same_day_effort_is_aggregated():
@@ -161,25 +161,25 @@ def test_block_can_start_on_last_historical_day():
     assert path == [3.0, 1.0, 2.0]
 
 
-def test_excess_effort_cannot_compensate_for_a_failed_day():
-    # Every two-day block totals 6, but one day always fails a pace of 3.
-    assert simulate([6.0, 0.0], 2, 3.0) == (0.0, 0.0)
+def test_excess_effort_compensates_for_a_low_effort_day():
+    # Both possible circular blocks total 6 over two days.
+    assert simulate([0.0, 6.0], 2, 3.0) == (1.0, 0.0)
 
 
-def test_failure_is_not_erased_by_later_success():
+def test_average_target_can_be_met_after_a_low_effort_day():
     rng = random.Random(0)
     with patch.object(predict, "bootstrap_days", return_value=iter([0, 6, 6])):
         results = predict.simulate_probabilities([0, 6], (1, 2, 3), 3, 1, rng)
-    assert results == {1: (0.0, 0.0), 2: (0.0, 0.0), 3: (0.0, 0.0)}
+    assert results == {1: (0.0, 0.0), 2: (1.0, 0.0), 3: (1.0, 0.0)}
 
 
-def test_shared_paths_have_known_sustained_probabilities():
+def test_shared_paths_have_known_average_pace_probabilities():
     paths = [iter([3, 0, 6]), iter([3, 3, 0]), iter([3, 3, 3]), iter([0, 6, 6])]
     with patch.object(predict, "bootstrap_days", side_effect=paths):
         results = predict.simulate_probabilities(
             [0, 3, 6], (1, 2, 3), 3, 4, random.Random(0)
         )
-    assert [results[days][0] for days in (1, 2, 3)] == [0.75, 0.5, 0.25]
+    assert [results[days][0] for days in (1, 2, 3)] == [0.75, 0.75, 0.75]
 
 
 def test_short_history_supports_long_horizons():
@@ -187,7 +187,7 @@ def test_short_history_supports_long_horizons():
 
 
 def test_zero_pace_is_certain():
-    assert all(simulate(DAILY, days, 0.0) == (1.0, 0.0)
+    assert all(simulate(EFFORT_DAYS, days, 0.0) == (1.0, 0.0)
                for days in HORIZONS.values())
 
 
@@ -196,7 +196,7 @@ def test_constant_effort_meets_equal_target():
 
 
 def test_target_above_every_observation_is_impossible():
-    assert simulate(DAILY, 30, 4.1) == (0.0, 0.0)
+    assert simulate(EFFORT_DAYS, 30, 4.1) == (0.0, 0.0)
 
 
 def test_all_zero_history_has_no_positive_capacity():
@@ -204,78 +204,62 @@ def test_all_zero_history_has_no_positive_capacity():
 
 
 def test_day_probability_matches_known_frequency():
-    # Exactly three of ten historical days meet a target of 3.
-    probability, _ = simulate(DAILY, 1, 3.0)
-    assert abs(probability - 0.3) < 0.05
+    # Two of three effort-entry days meet a target of 3.5.
+    probability, _ = simulate(EFFORT_DAYS, 1, 3.5)
+    assert abs(probability - 2 / 3) < 0.05
 
 
 def test_probability_and_mc_error_are_bounded():
-    results = [simulate(DAILY, days, pace)
+    results = [simulate(EFFORT_DAYS, days, pace)
                for days in HORIZONS.values() for pace in (0.0, 0.5, 1.5, 4.1)]
     assert all(0 <= p <= 1 and 0 <= error <= 0.5 / math.sqrt(SIMULATIONS)
                for p, error in results)
 
 
 def test_mc_error_matches_binomial_sampling_error():
-    probability, error = simulate(DAILY, 1, 3.0)
+    probability, error = simulate(EFFORT_DAYS, 1, 3.5)
     assert math.isclose(
         error, math.sqrt(probability * (1 - probability) / SIMULATIONS)
     )
 
 
 def test_predictions_are_reproducible():
-    assert simulate(DAILY, 30, 1.0) == simulate(DAILY, 30, 1.0)
+    assert simulate(EFFORT_DAYS, 30, 1.0) == simulate(EFFORT_DAYS, 30, 1.0)
 
 
 def test_lower_targets_never_reduce_probability():
     # Resetting the seed compares targets against identical simulated futures.
     ladder = (4.1, 3.5, 3.0, 1.5, 1.0, 0.5, 0.0)
-    probabilities = [[simulate(DAILY, days, pace)[0] for pace in ladder]
+    probabilities = [[simulate(EFFORT_DAYS, days, pace)[0] for pace in ladder]
                      for days in HORIZONS.values()]
     assert all(lower >= higher for values in probabilities
                for higher, lower in zip(values, values[1:]))
 
 
 def test_discrete_observations_allow_probability_plateaus():
-    assert simulate(DAILY, 1, 3.1) == simulate(DAILY, 1, 3.2)
+    assert simulate(EFFORT_DAYS, 1, 3.1) == simulate(EFFORT_DAYS, 1, 3.2)
 
 
 def test_report_covers_all_periods():
     assert set(report_rows(report(1.0))) == set(HORIZONS)
 
 
-def test_report_target_is_daily_pace_for_every_period():
+def test_report_target_effort_scales_with_calendar_horizon():
     rows = report_rows(report(1.5))
-    assert all(rows[name][0] == 1.5 for name in HORIZONS)
+    assert all(rows[name][0] == 1.5 * days
+               for name, days in HORIZONS.items())
 
 
 def test_report_probabilities_and_errors_match_simulation():
     rows = report_rows(report(1.0))
     rng = random.Random(predict.RANDOM_SEED)
     expected = predict.simulate_probabilities(
-        DAILY, HORIZONS.values(), 1.0, SIMULATIONS, rng
+        EFFORT_DAYS, HORIZONS.values(), 1.0, SIMULATIONS, rng
     )
     assert all(abs(rows[name][1] - p * 100) <= 0.051
                and abs(rows[name][2] - error * 100) <= 0.0051
                for name, days in HORIZONS.items()
                for p, error in (expected[days],))
-
-
-def test_longer_horizons_never_increase_probability():
-    daily = [3.0] * 20 + [0.0]
-    results = predict.simulate_probabilities(
-        daily, HORIZONS.values(), 3.0, SIMULATIONS, random.Random(0)
-    )
-    probabilities = [results[days][0] for days in HORIZONS.values()]
-    assert all(longer <= shorter
-               for shorter, longer in zip(probabilities, probabilities[1:]))
-
-
-def test_report_probabilities_never_increase_with_period():
-    rows = report_rows(report(1.0))
-    probabilities = [rows[name][1] for name in HORIZONS]
-    assert all(longer <= shorter
-               for shorter, longer in zip(probabilities, probabilities[1:]))
 
 
 def test_zero_pace_report():
@@ -284,6 +268,12 @@ def test_zero_pace_report():
 
 def test_report_is_reproducible():
     assert report(1.0) == report(1.0)
+
+
+def test_report_describes_average_pace_and_recorded_days():
+    text = report(1.0)
+    assert "Effort-entry days:  3" in text
+    assert "Extra effort can compensate" in text
 
 
 def test_direct_execution_help_needs_no_history():
