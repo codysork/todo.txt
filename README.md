@@ -9,7 +9,7 @@ A collection of configuration, add-ons, and filters for [todo.txt-cli](https://g
 - **Task overview:** Combine configured todo.sh views, suppress duplicates, and optionally show tasks not covered by those views.
 - **Completion tracking:** `pace` reports completed effort points over time; `predict pace` estimates the probability of maintaining a target pace.
 - **Task management:** Add tasks through a desktop dialog with `popup`, repeat completed tasks with `repeat`, and view due tasks with `today`.
-- **Kanban groundwork:** `kanban` identifies tasks for board columns, but does not yet draw the board.
+- **Kanban groundwork:** `kanban` defines board contexts and computes layout dimensions, but does not yet retrieve tasks or draw the board.
 
 ## Repository layout
 
@@ -19,9 +19,23 @@ A collection of configuration, add-ons, and filters for [todo.txt-cli](https://g
 | `actions/` | Executable todo.txt-cli add-ons |
 | `filters/` | Executable filters for todo.txt-cli output |
 | `tests/` | Tests and executable specifications |
-| `doc/` | Design notes and test plans |
 
 The repository contains configuration and code, not task data. By default, task files are stored under `$HOME/Sync/Todo` and are not tracked in git.
+
+## Configuration
+
+`config` sets `todo.txt`, `done.txt`, and `report.txt` under `$HOME/Sync/Todo`,
+and points todo.sh at the add-ons in `~/.todo/actions`. It sorts list output by
+the `t:` threshold, with undated tasks first, and uses `filters/futureTasks` to
+hide tasks whose threshold is in the future. Run `todo.sh -x` to show those
+tasks.
+
+Calling `todo.sh` without an action runs `overview`. The configured overview
+views are `ls @Routine:daily`, `today`, `ls due`, and `schedule`, in that order.
+Repeated task numbers are suppressed, then remaining active tasks are shown.
+These settings can be changed with `TODO_OVERVIEW_VIEWS`,
+`TODO_OVERVIEW_DUPLICATE_TASKS`, and
+`TODO_OVERVIEW_SHOW_REMAINING_TASKS`.
 
 ## Add-ons
 
@@ -29,20 +43,23 @@ The repository contains configuration and code, not task data. By default, task 
 | --- | --- |
 | `todo.sh today [TERM...]` | Shows tasks whose threshold is today or earlier |
 | `todo.sh schedule` | Lists scheduled tasks |
-| `todo.sh schedule <item[,item...]\|start-end> <date>` | Sets thresholds for one task, a comma-separated list, or an inclusive task-number range |
-| `todo.sh schedule <item> mv <date>` | Moves a task’s threshold |
-| `todo.sh schedule <item> rm` | Removes a task’s threshold |
-| `todo.sh schedule R <date>` | Schedules eligible tasks of the specified priority after one confirmation |
+| `todo.sh schedule <item-list\|range> <date>` | Sets thresholds for task numbers, comma-separated selections, inclusive ranges, or mixed selections such as `2,5-7,9` |
+| `todo.sh schedule <item-list\|range> mv <date>` | Moves thresholds for the selected tasks |
+| `todo.sh schedule <item-list\|range> rm` | Removes thresholds from the selected tasks |
+| `todo.sh schedule R <date\|rm>` | Reschedules eligible tasks of the specified priority, or removes their thresholds, after one confirmation |
 | `todo.sh routine set <frequency> <task-number> [<date>\|<day>]` | Sets a routine frequency and threshold |
 | `todo.sh routine show <frequency>\|all` | Lists routine tasks |
-| `todo.sh overview` | Displays the configured task views and, optionally, tasks not shown in those views |
+| `todo.sh overview` | Displays the configured task views, suppresses repeated task numbers by default, and shows remaining active tasks by default |
 | `todo.sh repeat ITEM [DATE\|DAY]` | Completes and re-adds a task, optionally rescheduling its threshold |
 | `todo.sh pace [daily\|weekly\|monthly\|annual] [count]` | Reports completed effort points per day for each period |
 | `todo.sh predict pace [pace]` | Estimates the probability that total effort meets the target average pace over each calendar period; historical samples include only days with valid effort entries |
 | `todo.sh popup` | Opens a dialog to add a task |
-| `todo.sh kanban` | Identifies tasks for the board’s columns; board rendering is not implemented yet |
+| `todo.sh kanban` | Kanban scaffold with configured contexts and layout calculations; task retrieval and board rendering are not implemented yet |
 
-All add-ons support `usage`, `help`, `-h`, and `--help`. The main CLI’s `help`, `shorthelp`, and `listaddons` commands also provide help and add-on listings.
+Use todo.sh's `help`, `shorthelp`, and `listaddons` commands for help and
+add-on listings. Action-level help support varies: `todo.sh` requests `usage`
+from add-ons, while aliases such as `help`, `-h`, and `--help` depend on the
+individual action.
 
 Priority-wide date rescheduling normally includes tasks without a threshold or
 with a threshold due today or earlier. Future-scheduled tasks are skipped;
@@ -52,10 +69,11 @@ making changes. Removing schedules with `todo.sh schedule R rm` includes
 future schedules regardless of the setting.
 
 `overview` uses `TODO_OVERVIEW_VIEWS` as an ordered, comma-separated list of
-todo.sh commands. By default it runs `today`, `routine show all`, `ls due`, and
-`schedule`. It suppresses repeated task numbers across views when
-`TODO_OVERVIEW_DUPLICATE_TASKS=false`; `TODO_OVERVIEW_SHOW_REMAINING_TASKS=true`
-adds active tasks not shown by any view at the end.
+todo.sh commands. The config runs `ls @Routine:daily`, `today`, `ls due`, and
+`schedule`. A bare `routine` entry is expanded to `routine show all`. By
+default, repeated task numbers are suppressed
+(`TODO_OVERVIEW_DUPLICATE_TASKS=false`) and active tasks not shown by a view are
+added at the end (`TODO_OVERVIEW_SHOW_REMAINING_TASKS=true`).
 
 ### How `predict pace` estimates probabilities
 
@@ -102,16 +120,12 @@ The configuration sorts tasks by threshold date, with undated tasks first. Its f
 
 Add-ons resolve the todo.sh command and task-file paths themselves, so they can also be run outside the usual add-on setup.
 
-## Tests and current status
+## Tests
 
-Run the `predict` tests with:
-
-```bash
-python -m pytest tests/test_predict.py -v
-```
-
-Or run the test file directly:
+Run the test suite from the repository root with:
 
 ```bash
-python tests/test_predict.py
+pytest
 ```
+
+The suite covers `overview`, `predict`, and `schedule`.

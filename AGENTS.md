@@ -9,6 +9,35 @@ This directory is part of the dotfiles repository rooted at `$HOME`
 tracked in git. Do not edit `/usr/bin/todo.sh`; it is a distro package. Extend
 behavior with files here.
 
+## Clean code standards
+
+Clean code should be understandable to teammates and easy to maintain. Apply
+these guidelines alongside the conventions below; use judgment for Bash and
+Python scripts rather than forcing patterns that do not fit.
+
+- Follow standard conventions, keep solutions simple, and fix root causes.
+  Leave touched areas clearer than you found them.
+- Keep configuration at high levels and avoid unnecessary configurability.
+  Prefer direct dependencies and simple control flow; use polymorphism instead
+  of growing conditionals when it suits the design. Isolate concurrent work
+  when present.
+- Be consistent. Use descriptive, searchable names; explain boundary
+  conditions in one place; avoid magic numbers, encodings, and negative
+  conditionals when a clearer alternative exists.
+- Keep functions small and focused, with descriptive names and few arguments.
+  Avoid side effects and flag arguments when separate operations are clearer.
+- Comment intent, clarification, or important warnings—not obvious code.
+  Remove commented-out code and avoid redundant comments.
+- Structure code so related concepts are close, declarations are near use, and
+  indentation and line lengths remain readable.
+- Keep data structures and, where used, classes small and single-purpose. Hide
+  implementation details and avoid unnecessary coupling.
+- Keep tests readable, fast, independent, and repeatable; prefer focused tests.
+- Watch for rigidity, fragility, immobility, needless complexity or repetition,
+  and opacity.
+
+Adapted from [Clean Code standards](https://gist.githubusercontent.com/wojteklu/73c6914cc446146b8b533c0988cf8d29/raw/c7a44d774fc3b09a0d5f0f58888550ba0ac694b9/clean_code.md).
+
 ## Layout
 
 | Path | Purpose |
