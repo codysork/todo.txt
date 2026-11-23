@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # @author Cody Sork <codysork@gmail.com>
 # @created ?
-# @modified 2026-11-20
+# @modified 2026-11-22
 
 action=$1
 shift
@@ -9,17 +9,27 @@ item=$1
 shift
 param="$*"
 
+TODO_CMD="${TODO_FULL_SH:-${TODO_SH:-todo.sh}}"
+TODO_FILE="${TODO_FILE:-${TODO_DIR:-$HOME}/todo.txt}"
+
 pattern=" t:\([0-9]\{2,4\}[^A-Za-z0-9]\)\{2\}[0-9]\{2,4\}" # not enforcing any particular format
+TASK_IDS=()
 
 function usage {
-	echo "  $(basename $0) [<item> <date>|<priority> <date>|<item> mv <date>|<item> rm]"
+	echo "  $(basename $0) [<item|item-list|item-range> <date>|<priority> <date>|<item> mv <date>|<item> rm]"
 	echo "    Set, modify or remove date threshold of an item, or schedule"
-	echo "    all tasks of one priority to another date."
+	echo "    tasks selected by number, number list, number range, or priority."
+	echo "    Priority operations show affected tasks and ask once before applying."
+	echo "    Priority date rescheduling skips future-scheduled tasks unless"
+	echo "    TODO_SCHEDULE_PRIORITY_RESCHEDULE_ALL=true; rm always removes all schedules."
 	echo "    If arguments are omitted, all scheduled tasks are listed."
 	echo "    Intended for use with futureTasks \
 (http://github.com/FND/todo.txt-cli/blob/extensions/futureTasks)."
 	echo "    Examples:"
 	echo "      $ $TODO_SH $(basename $0) 42 tomorrow"
+	echo "      $ $TODO_SH $(basename $0) 71-75 tomorrow"
+	echo "      $ $TODO_SH $(basename $0) 2,5,9 monday"
+	echo "      $ $TODO_SH $(basename $0) 2,5-7,9 \"next monday\""
 	echo "      $ $TODO_SH $(basename $0) 42 mv 7 days"
 	echo "      $ $TODO_SH $(basename $0) 42 rm"
 	echo "      $ $TODO_SH $(basename $0) R tomorrow"
@@ -28,17 +38,18 @@ function usage {
 }
 
 function list {
-	$TODO_FULL_SH -x list | grep "$pattern"
+	"$TODO_CMD" -x list | grep "$pattern"
 }
 
 function add {
 	local item=$1
 	local threshold=$2
 
-	local flag=`sed -e "$item!d" "$TODO_FILE" | grep "$pattern"`
+	local flag
+	flag=$(sed -e "$item!d" "$TODO_FILE" | grep "$pattern")
 
 	if [ -z "$flag" ]; then
-		$TODO_FULL_SH append "$item" "t:"`date -d "$threshold" +%F`
+		"$TODO_CMD" append "$item" "t:$(date -d "$threshold" +%F)"
 	else
 		replace "$item" "$threshold"
 	fi
@@ -51,7 +62,7 @@ function remove {
 			-e "s/^([A-Za-z])* //" \
 			-e "s/$pattern//" \
 			"$TODO_FILE"` # remove item number, priority and threshold
-	$TODO_FULL_SH replace "$item" "$task" # NB: retains priority
+	"$TODO_CMD" replace "$item" "$task" # NB: retains priority
 }
 
 function replace {
@@ -74,7 +85,8 @@ function validate_date {
 function confirm {
 	local message=$1
 	local answer
-	read -r -p "$message (y/N) " answer || answer=
+	printf '%s (y/N) ' "$message" >&2
+	read -r answer || answer=
 	case "$answer" in
 		y|Y|yes|YES|Yes) return 0 ;;
 		*) return 1 ;;
@@ -104,11 +116,30 @@ function schedule_priority {
 	local pri=$1
 	local param=$2
 	local verb="Reschedule"
+	local reschedule_all
+	local skipped_future=0
+	local today
+	local target
+	local it
+	local task
+	local -a selected_ids=()
+	local -a selected_tasks=()
 
 	[ -z "$param" ] && usage
 
 	if [ "$param" != "rm" ]; then
 		validate_date "$param"
+		reschedule_all=${TODO_SCHEDULE_PRIORITY_RESCHEDULE_ALL:-false}
+		case "${reschedule_all,,}" in
+			true|yes|1|on) reschedule_all=true ;;
+			false|no|0|off) reschedule_all=false ;;
+			*)
+				echo "Schedule: TODO_SCHEDULE_PRIORITY_RESCHEDULE_ALL must be true or false." >&2
+				exit 1
+				;;
+		esac
+		today=$(date +%F)
+		target=${param#mv }
 	else
 		verb="Remove schedule from"
 	fi
@@ -121,13 +152,49 @@ function schedule_priority {
 	fi
 
 	for it in $tasks; do
-		local task
 		task=$(sed -n "${it}p" "$TODO_FILE")
-		printf '%s %s\n' "$it" "$task"
-		if confirm "$verb task $it?"; then
-			apply_schedule "$it" "$param"
+		if [ "$param" != "rm" ] && [ "$reschedule_all" = false ] &&
+			get_threshold_date "$task" && [[ "$TASK_THRESHOLD" > "$today" ]]; then
+			((skipped_future += 1))
+			continue
 		fi
+		selected_ids+=("$it")
+		selected_tasks+=("$it $task")
 	done
+
+	if [ "${#selected_ids[@]}" -eq 0 ]; then
+		echo "TODO: No eligible tasks with priority ($pri)."
+		echo "Schedule: skipped $skipped_future future-scheduled task(s)."
+		return 0
+	fi
+
+	if [ "$skipped_future" -gt 0 ]; then
+		echo "Schedule: skipping $skipped_future future-scheduled task(s); set TODO_SCHEDULE_PRIORITY_RESCHEDULE_ALL=true to include them."
+	fi
+	printf '%s\n' "${selected_tasks[@]}"
+	if ! confirm "$verb ${#selected_ids[@]} task(s) with priority ($pri)${target:+ to $target}?"; then
+		echo "Schedule: cancelled."
+		return 0
+	fi
+
+	for it in "${selected_ids[@]}"; do
+		apply_schedule "$it" "$param"
+	done
+}
+
+function get_threshold_date {
+	local task=$1
+	TASK_THRESHOLD=
+
+	if [[ "$task" =~ (^|[[:space:]])t:([0-9]{4}-[0-9]{2}-[0-9]{2})([[:space:]]|$) ]]; then
+		local candidate=${BASH_REMATCH[2]}
+		if date -d "$candidate" +%F >/dev/null 2>&1; then
+			TASK_THRESHOLD=$candidate
+			return 0
+		fi
+	fi
+
+	return 1
 }
 
 function schedule_item {
@@ -141,12 +208,99 @@ function schedule_item {
 	apply_schedule "$item" "$param"
 }
 
+function normalize_task_number {
+	local number=$1
+	local task_count=$2
+
+	[[ "$number" =~ ^[0-9]+$ ]] || return 1
+	while [[ ${#number} -gt 1 && "$number" == 0* ]]; do
+		number=${number#0}
+	done
+
+	if [[ "$number" == "0" ]] ||
+		(( ${#number} > ${#task_count} )) ||
+		{ (( ${#number} == ${#task_count} )) && (( 10#$number > 10#$task_count )); }; then
+		return 1
+	fi
+
+	printf '%s' "$number"
+}
+
+function parse_task_selection {
+	local selection=$1
+	local task_count=$2
+	local part start end number normalized
+	local -a parts=()
+
+	TASK_IDS=()
+	[[ "$selection" =~ ^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$ ]] ||
+		return 1
+	IFS=',' read -r -a parts <<< "$selection"
+
+	for part in "${parts[@]}"; do
+		if [[ "$part" == *-* ]]; then
+			start=${part%%-*}
+			end=${part#*-}
+		else
+			start=$part
+			end=$part
+		fi
+
+		start=$(normalize_task_number "$start" "$task_count") || return 1
+		end=$(normalize_task_number "$end" "$task_count") || return 1
+		(( 10#$start <= 10#$end )) || return 1
+
+		for ((number = 10#$start; number <= 10#$end; number++)); do
+			normalized=$(normalize_task_number "$number" "$task_count") ||
+				return 1
+			if [[ ! " ${TASK_IDS[*]} " =~ [[:space:]]${normalized}[[:space:]] ]]; then
+				TASK_IDS+=("$normalized")
+			fi
+		done
+	done
+}
+
+function schedule_items {
+	local selection=$1
+	local param=$2
+	local task_count
+	local item
+
+	[[ -r "$TODO_FILE" ]] || {
+		echo "Schedule: cannot read todo file: $TODO_FILE" >&2
+		exit 1
+	}
+	task_count=$(awk 'END { print NR }' "$TODO_FILE")
+	parse_task_selection "$selection" "$task_count" || {
+		echo "Schedule: invalid task selection '$selection'." >&2
+		exit 1
+	}
+
+	if [ "$param" != "rm" ]; then
+		validate_date "$param"
+	fi
+
+	# Validate every selected line before changing any task.
+	for item in "${TASK_IDS[@]}"; do
+		if [ -z "$(sed -n "${item}p" "$TODO_FILE")" ]; then
+			echo "Schedule: no task numbered $item." >&2
+			exit 1
+		fi
+	done
+
+	for item in "${TASK_IDS[@]}"; do
+		apply_schedule "$item" "$param"
+	done
+}
+
 [ "$action" = "usage" ] && usage
 
 if [ -z "$item" ]; then
 	list
 elif [[ "$item" =~ ^\(?([A-Za-z])\)?$ ]]; then
 	schedule_priority "${BASH_REMATCH[1]^^}" "$param"
+elif [[ "$item" =~ ^[0-9] || "$item" == *,* || "$item" == *-* ]]; then
+	schedule_items "$item" "$param"
 else
 	schedule_item "$item" "$param"
 fi
