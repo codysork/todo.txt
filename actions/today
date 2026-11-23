@@ -22,8 +22,5 @@ post_filter_command="${post_filter_command:-}${post_filter_command:+ | }${awk_fi
 
 TODAY_LIST=$(_list "$TODO_FILE" "$@")
 if [ -n "${TODAY_LIST}" ]; then
-    echo "==================================="
-    echo "Tasks for today:"
-    echo "==================================="
     echo "${TODAY_LIST}"
 fi
