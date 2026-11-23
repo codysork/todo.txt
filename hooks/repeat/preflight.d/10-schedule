@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+#
+# Validate repeat's optional target date and ensure the schedule action exists.
+
+set -euo pipefail
+
+item=$1
+target_date=$2
+TODO_CMD="${TODO_FULL_SH:-${TODO_SH:-todo.sh}}"
+
+date_input=${target_date#mv }
+if ! date -d "$date_input" +%F >/dev/null 2>&1; then
+	echo "Error: invalid repeat target date '$target_date'." >&2
+	exit 1
+fi
+
+if ! "$TODO_CMD" help schedule >/dev/null 2>&1; then
+	echo "Error: 'schedule' action is not installed." >&2
+	exit 1
+fi

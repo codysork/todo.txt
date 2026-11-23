@@ -3,11 +3,13 @@
 # @file repeat (todo.sh action)
 # @author Mark D. White (edited by Cody Sork <codysork@gmail.com> with help from ChatGPT)
 # @created 2011-11-16
-# @modified 2026-11-19
+# @modified 2026-11-22
 # @description An addon command for todo.txt-cli that marks an item done and 
-#              immediately re-enters it, optionally rescheduling its threshold date.
+#              immediately re-enters it, optionally running configured hooks.
 
 TODO_CMD="${TODO_FULL_SH:-${TODO_SH:-todo.sh}}"
+REPEAT_ACTION_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+source "$REPEAT_ACTION_DIR/../lib/hooks.sh"
 
 function usage {
     echo " Customized repeat:"
@@ -20,24 +22,6 @@ function usage {
     exit
 }
 
-function is_schedule_installed {
-    local this_dir
-    this_dir=$(dirname "$0")
-    local actions_dirs="${TODO_ACTIONS_DIR:-$HOME/.todo/actions:$HOME/.todo.actions.d:${XDG_CONFIG_HOME:-$HOME/.config}/todo/actions}"
-    local dir
-    local old_ifs=$IFS
-    IFS=':'
-    for dir in "$this_dir" $actions_dirs; do
-        [ -z "$dir" ] && continue
-        if [ -x "$dir/schedule" ] || [ -x "$dir/schedule/schedule" ]; then
-            IFS=$old_ifs
-            return 0
-        fi
-    done
-    IFS=$old_ifs
-    return 1
-}
-
 function normalize_target_date {
     local input=$1
     if [[ "$input" =~ ^[0-9]+$ ]]; then
@@ -46,24 +30,6 @@ function normalize_target_date {
         echo "${input#+} days"
     else
         echo "$input"
-    fi
-}
-
-function validate_target_date {
-    local target_date=$1
-    [ -z "$target_date" ] && return 0
-
-    if ! is_schedule_installed; then
-        echo "Error: 'schedule' action is not installed." >&2
-        exit 1
-    fi
-
-    local test_date=$target_date
-    [[ "$test_date" == mv* ]] && test_date="${test_date#mv }"
-
-    if ! date -d "$test_date" +%F >/dev/null 2>&1; then
-        date -d "$test_date" +%F
-        exit 1
     fi
 }
 
@@ -96,14 +62,21 @@ function repeat_task {
     [ -z "$line" ] && return 0
     [ -n "$DO" ] && ! $DO && return 0
 
+    if [ -n "$target_date" ]; then
+        if [ "$(todo_count_hooks repeat preflight)" -eq 0 ] ||
+            [ "$(todo_count_hooks repeat after_add)" -eq 0 ]; then
+            echo "Error: repeat date hooks are not fully configured." >&2
+            exit 1
+        fi
+        todo_run_hooks repeat preflight "$item" "$target_date" || exit $?
+    fi
+
     "$TODO_CMD" command do "$item" || exit $?
     "$TODO_CMD" command add "$line" || exit $?
 
-    [ -z "$target_date" ] && return 0
-
     local new_item
     new_item=$(sed -n '$ =' "$TODO_FILE")
-    "$TODO_CMD" schedule "$new_item" "$target_date" || exit $?
+    todo_run_hooks repeat after_add "$item" "$new_item" "$target_date" || exit $?
 }
 
 # --- Main ---
@@ -137,7 +110,6 @@ fi
 TARGET_DATE=""
 if [ -n "$PARAM" ]; then
     TARGET_DATE=$(normalize_target_date "$PARAM")
-    validate_target_date "$TARGET_DATE"
 fi
 
 CLEAN_LINE=$(prepare_task_line "$LINE")

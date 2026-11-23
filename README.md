@@ -37,6 +37,16 @@ These settings can be changed with `TODO_OVERVIEW_VIEWS`,
 `TODO_OVERVIEW_DUPLICATE_TASKS`, and
 `TODO_OVERVIEW_SHOW_REMAINING_TASKS`.
 
+`TODO_HOOKS_DIR` points to optional add-on hooks (default:
+`~/.todo/hooks`). Hooks are executable files under
+`<TODO_HOOKS_DIR>/<action>/<event>.d/`; filenames determine execution order.
+Bash actions can source `lib/hooks.sh` and call
+`todo_run_hooks <action> <event> [arguments...]`; other actions can invoke
+`lib/hooks.sh run <action> <event> [arguments...]`. Hooks receive
+`TODO_HOOK_ACTION` and `TODO_HOOK_EVENT` in their environment, followed by
+the event arguments as positional parameters. A nonzero hook status stops the
+chain and is returned to the action.
+
 ## Add-ons
 
 | Command | What it does |
@@ -74,6 +84,11 @@ todo.sh commands. The config runs `ls @Routine:daily`, `today`, `ls due`, and
 default, repeated task numbers are suppressed
 (`TODO_OVERVIEW_DUPLICATE_TASKS=false`) and active tasks not shown by a view are
 added at the end (`TODO_OVERVIEW_SHOW_REMAINING_TASKS=true`).
+
+`repeat` uses `preflight` hooks before changing tasks when a target date is
+given, then runs `after_add` hooks with the original and new task numbers.
+The configured schedule hooks validate the date before the repeat and apply
+the threshold to the new task afterwards.
 
 ### How `predict pace` estimates probabilities
 
@@ -114,7 +129,7 @@ The configuration sorts tasks by threshold date, with undated tasks first. Its f
 
 1. Install and configure [todo.txt-cli](https://github.com/todotxt/todo.txt).
 2. Place this repository at `~/.todo` or link it there.
-3. Ensure the add-ons and filter are executable.
+3. Ensure the add-ons, hooks, and filter are executable.
 4. Set your task-data location in `config` if you do not want to use the default `$HOME/Sync/Todo`.
 5. Configure todo.txt-cli to load `~/.todo/config` and use `~/.todo/actions` as its add-ons directory.
 
@@ -128,4 +143,5 @@ Run the test suite from the repository root with:
 pytest
 ```
 
-The suite covers `overview`, `predict`, and `schedule`.
+The suite covers `overview`, `predict`, `schedule`, and the hook runner used by
+`repeat`.

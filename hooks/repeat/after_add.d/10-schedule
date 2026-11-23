@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+#
+# Apply the optional threshold date to the repeated task.
+
+set -euo pipefail
+
+original_item=$1
+new_item=$2
+target_date=${3:-}
+TODO_CMD="${TODO_FULL_SH:-${TODO_SH:-todo.sh}}"
+
+[[ -n "$target_date" ]] || exit 0
+"$TODO_CMD" schedule "$new_item" "$target_date"

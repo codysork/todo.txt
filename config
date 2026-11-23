@@ -2,7 +2,7 @@
 # @file config (for todo.sh)
 # @author Cody Sork <codysork@gmail.com>
 # @created 2026-10-19
-# @modified 2026-10-20
+# @modified 2026-11-22
 # @description Configuration file for todo.sh
 
 # === EDIT FILE LOCATIONS BELOW ===
@@ -21,6 +21,7 @@ export REPORT_FILE="${TODO_DIR}/report.txt"
 # If your actions are spread out further apart, you can append additional base
 # directories, separated by colons, to the configuration path.
 export TODO_ACTIONS_DIR="$HOME/.todo/actions"
+export TODO_HOOKS_DIR="$HOME/.todo/hooks"
 
 # == EDIT FILE LOCATIONS ABOVE ===
 

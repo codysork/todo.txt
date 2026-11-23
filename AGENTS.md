@@ -44,6 +44,8 @@ Adapted from [Clean Code standards](https://gist.githubusercontent.com/wojteklu/
 | --- | --- |
 | `config` | todo.sh configuration, sourced on every run; defines paths, colors, sort/final filter, behavior |
 | `actions/` | Executable add-ons; each filename is the `todo.sh` subcommand name |
+| `hooks/` | Configured executable add-on hooks, organized by action and event |
+| `lib/` | Shared helper scripts used by add-ons |
 | `filters/` | Executable stdin→stdout filters (currently `futureTasks`, wired via `TODOTXT_FINAL_FILTER`) |
 
 Current actions: `kanban`, `pace`, `popup`, `repeat`, `routine`, `schedule`,
@@ -63,12 +65,17 @@ Current actions: `kanban`, `pace`, `popup`, `repeat`, `routine`, `schedule`,
   handle `usage` (and ideally `help`, `-h`, `--help`) by printing indented help
   to stdout and exiting 0.
 - Environment supplied or respected: `TODO_DIR`, `TODO_FILE`, `DONE_FILE`,
-  `REPORT_FILE`, `TODO_ACTIONS_DIR`, `TODO_SH`, `TODO_FULL_SH`,
+  `REPORT_FILE`, `TODO_ACTIONS_DIR`, `TODO_HOOKS_DIR`, `TODO_SH`, `TODO_FULL_SH`,
   `TODOTXT_VERBOSE`, and the `PRI_*` / `COLOR_*` variables.
 - Add-ons should resolve the CLI and data paths themselves so they also work
   standalone:
   `TODO_CMD="${TODO_FULL_SH:-${TODO_SH:-todo.sh}}"`
   `TODO_FILE="${TODO_FILE:-${TODO_DIR:-$HOME}/todo.txt}"`
+- Hook-aware actions source `lib/hooks.sh` and call `todo_run_hooks ACTION
+  EVENT [ARG...]`. Hooks are executable files under
+  `$TODO_HOOKS_DIR/ACTION/EVENT.d/`, run in filename order, and receive
+  `TODO_HOOK_ACTION` / `TODO_HOOK_EVENT` plus the event arguments. Other
+  languages can invoke `lib/hooks.sh run ACTION EVENT [ARG...]`.
 
 ## File header convention
 
