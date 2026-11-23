@@ -1,5 +1,15 @@
 # AGENTS.md
 
+> ## 🚨 REQUIRED — READ BEFORE ANY CODE CHANGE
+>
+> **Every AI-generated function or code block—including tests—MUST have a
+> comment immediately above it that says exactly: `AI-generated code
+> (unreviewed by a human)`.**
+>
+> **Do not put this marker only at file level. Keep it until a human has
+> reviewed that code.** Use the language's comment syntax (for example,
+> `# AI-generated code (unreviewed by a human)` in Bash and Python).
+
 Scope: `~/.todo` — configuration, custom actions, and output filters for
 [todo.txt-cli](https://github.com/todotxt/todo.txt-cli) (`/usr/bin/todo.sh`).
 
@@ -35,13 +45,6 @@ Python scripts rather than forcing patterns that do not fit.
 - Keep tests readable, fast, independent, and repeatable; prefer focused tests.
 - Watch for rigidity, fragility, immobility, needless complexity or repetition,
   and opacity.
-
-> ### ⚠️ REQUIRED: Mark AI-generated code
->
-> **Every newly generated code block must carry the comment
-> `AI-generated code (unreviewed by a human)` until a human has reviewed it.**
-> Use the project's comment syntax (`#` in Bash and Python) and place a marker
-> immediately above each generated function or code block—not at file level.
 
 Adapted from [Clean Code standards](https://gist.githubusercontent.com/wojteklu/73c6914cc446146b8b533c0988cf8d29/raw/c7a44d774fc3b09a0d5f0f58888550ba0ac694b9/clean_code.md).
 
@@ -150,8 +153,10 @@ Bash actions and `config` carry a metadata block:
 
 - `(A)`–`(Z)` priority, `x YYYY-MM-DD` completed, `+Project`, `@Context`.
 - Metadata uses `key:value`: `t:YYYY-MM-DD` (threshold), `due:YYYY-MM-DD`,
-  and the custom scoring fields `effort:`, `hassle:`, `uplift:` (decimals).
-  `pace` sums `effort:` from completed lines in `done.txt`.
+  and decimal scoring fields such as `physical:`, `mental:`, `stress:`, and
+  `effort:`.
+- `pace` reports `physical:`, `mental:`, and `stress:` totals from completed
+  lines in `done.txt`; `predict pace` uses `effort:` observations.
 - Routine tasks use `@Routine:<frequency>` (`daily`, `weekly`, `monthly`,
   `quarterly`, `yearly`, `irregular`).
 - `config` sorts list output by `t:` (undated lines sort first as
