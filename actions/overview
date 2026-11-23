@@ -9,23 +9,26 @@
 # Usage:
 #   todo.sh overview
 
-# AI-generated code (unreviewed by a human)
 import os
 import re
 import shlex
 import subprocess
 import sys
 
+#-----------------------------------------------------------------------------#
+#                               Constants                                     #
+#-----------------------------------------------------------------------------#
 
-# AI-generated code (unreviewed by a human)
 DEFAULT_VIEWS = "today, routine, ls due, schedule"
 TASK_ID_RE = re.compile(r"^\s*(\d+)\s+")
 ANSI_RE = re.compile(r"\033\[[0-9;]*m")
 TRUE_VALUES = {"1", "true", "yes", "on"}
 FALSE_VALUES = {"0", "false", "no", "off"}
 
+#-----------------------------------------------------------------------------#
+#                               Functions                                     #
+#-----------------------------------------------------------------------------#
 
-# AI-generated code (unreviewed by a human)
 def usage():
     print("  overview")
     print("    Display the configured todo.sh views and remaining tasks.")
@@ -34,13 +37,10 @@ def usage():
     print("        todo.sh overview")
 
 
-# AI-generated code (unreviewed by a human)
 def fail(message):
     print(f"Overview: {message}", file=sys.stderr)
     return 1
 
-
-# AI-generated code (unreviewed by a human)
 def setting_enabled(name, default):
     value = os.environ.get(name, default).strip().lower()
     if value in TRUE_VALUES:
@@ -48,7 +48,6 @@ def setting_enabled(name, default):
     if value in FALSE_VALUES:
         return False
     raise ValueError(f"{name} must be true or false, not {value!r}")
-
 
 # AI-generated code (unreviewed by a human)
 def parse_views(value):
