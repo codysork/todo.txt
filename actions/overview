@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+#
+# @file overview (todo.sh action)
+# @author Cody Sork <codysork@gmail.com> with help from AI agents
+# @created 2026-11-22
+# @modified 2026-11-22
+# @description Display configured todo.sh views in one overview.
+#
+# Usage:
+#   todo.sh overview
+
+import os
+import re
+import shlex
+import subprocess
+import sys
+
+
+DEFAULT_VIEWS = "today, routine, ls due, schedule"
+TASK_ID_RE = re.compile(r"^\s*(\d+)\s+")
+ANSI_RE = re.compile(r"\033\[[0-9;]*m")
+TRUE_VALUES = {"1", "true", "yes", "on"}
+FALSE_VALUES = {"0", "false", "no", "off"}
+
+
+def usage():
+    print("  overview")
+    print("    Display the configured todo.sh views and remaining tasks.")
+    print("      Configure views with TODO_OVERVIEW_VIEWS.")
+    print("      Examples:")
+    print("        todo.sh overview")
+
+
+def fail(message):
+    print(f"Overview: {message}", file=sys.stderr)
+    return 1
+
+
+def setting_enabled(name, default):
+    value = os.environ.get(name, default).strip().lower()
+    if value in TRUE_VALUES:
+        return True
+    if value in FALSE_VALUES:
+        return False
+    raise ValueError(f"{name} must be true or false, not {value!r}")
+
+
+def parse_views(value):
+    """Parse the configured comma-separated todo.sh command list."""
+    views = []
+    for item in value.split(","):
+        command = shlex.split(item)
+        if command:
+            if command == ["routine"]:
+                command = ["routine", "show", "all"]
+            views.append(command)
+    return views
+
+
+def task_id(line):
+    plain = ANSI_RE.sub("", line)
+    match = TASK_ID_RE.match(plain)
+    return match.group(1) if match else None
+
+
+def run_todo(todo_command, arguments):
+    env = os.environ.copy()
+    env["TODOTXT_VERBOSE"] = "0"
+    try:
+        result = subprocess.run(
+            [*todo_command, *arguments],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+    except OSError as error:
+        raise RuntimeError(f"could not run todo.sh command: {error}") from error
+    if result.returncode != 0:
+        detail = result.stderr.strip() or f"exit status {result.returncode}"
+        raise RuntimeError(
+            f"todo.sh {' '.join(arguments)} failed: {detail}"
+        )
+    return result.stdout
+
+
+def filter_view_output(output, seen, allow_duplicates):
+    """Hide repeated task rows while preserving other command output."""
+    rendered = []
+    for line in output.splitlines():
+        number = task_id(line)
+        if number is None:
+            rendered.append(line)
+            continue
+        already_seen = number in seen
+        seen.add(number)
+        if allow_duplicates or not already_seen:
+            rendered.append(line)
+    return rendered
+
+
+def render_section(title, output, seen, allow_duplicates):
+    print(f"=== {title} ===")
+    lines = filter_view_output(output, seen, allow_duplicates)
+    if lines:
+        print("\n".join(lines))
+    else:
+        print("No tasks.")
+    print()
+
+
+def main():
+    args = sys.argv[1:]
+    if args and args[0] == os.path.basename(__file__):
+        args = args[1:]
+    if args and args[0].lower() in {"usage", "help", "-h", "--help"}:
+        usage()
+        return 0
+    if args:
+        return fail(f"unexpected arguments: {' '.join(args)}")
+
+    try:
+        views = parse_views(os.environ.get("TODO_OVERVIEW_VIEWS", DEFAULT_VIEWS))
+        show_remaining = setting_enabled(
+            "TODO_OVERVIEW_SHOW_REMAINING_TASKS", "true"
+        )
+        allow_duplicates = setting_enabled(
+            "TODO_OVERVIEW_DUPLICATE_TASKS", "false"
+        )
+        todo_command = shlex.split(
+            os.environ.get("TODO_FULL_SH")
+            or os.environ.get("TODO_SH")
+            or "todo.sh"
+        )
+        if not todo_command:
+            raise ValueError("TODO_SH must name the todo.sh executable")
+
+        outputs = [
+            (command, run_todo(todo_command, command))
+            for command in views
+        ]
+        remaining = (
+            run_todo(todo_command, ["list"]) if show_remaining else None
+        )
+    except (ValueError, RuntimeError) as error:
+        return fail(str(error))
+
+    seen = set()
+    for command, output in outputs:
+        render_section(" ".join(command), output, seen, allow_duplicates)
+
+    if show_remaining:
+        print("=== Remaining tasks ===")
+        lines = filter_view_output(remaining or "", seen, False)
+        if lines:
+            print("\n".join(lines))
+        else:
+            print("No remaining tasks.")
+        print()
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
