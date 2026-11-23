@@ -3,19 +3,29 @@
 # @file predict (todo.sh action)
 # @author Cody Sork <codysork@gmail.com> with help from AI agents
 # @created 2026-11-21
-# @modified 2026-11-21
-# @description Print the probability (%) of keeping a pace, from done.txt history.
+# @modified 2026-11-22
+# @description Estimate the probability (%) of averaging a target pace,
+#              using historical effort-entry days and bootstrap simulation.
 #
 # Usage:
 #   todo.sh predict pace [pace]
 #
-#   pace       target daily effort rate (default: posterior mean rate)
+#   pace       target daily effort rate (default: historical mean)
+#
+# Model:
+#   Circular moving-block bootstrap of daily effort entries.
+#   Success is total simulated effort >= pace * calendar days.
+#
+# Dependencies: Python standard library only.
 
 import math
 import os
+import random
 import re
+import statistics
 import sys
 from datetime import date, timedelta
+from typing import NamedTuple
 
 #----------------------------------------------------------------------------
 # Configuration
@@ -24,13 +34,18 @@ from datetime import date, timedelta
 DONE_FILE = os.environ.get("DONE_FILE") or os.path.join(
     os.environ.get("TODO_DIR") or os.path.expanduser("~"), "done.txt"
 )
+
 TODAY = date.today()
 
-# Conjugate prior on the daily effort rate: lambda ~ Gamma(alpha, beta).
-PRIOR_ALPHA = 1.0
-PRIOR_BETA = 1.0
+SIMULATIONS = 20_000
+BLOCK_DAYS = 7
+
+# Fixed seed ensures reproducible predictions.
+RANDOM_SEED = 0
 
 HELP_WORDS = ("usage", "help", "-h", "--help")
+
+EFFORT_RE = re.compile(r"^effort:([0-9]+(?:\.[0-9]+)?)$")
 
 #----------------------------------------------------------------------------
 # Helpers
@@ -38,10 +53,10 @@ HELP_WORDS = ("usage", "help", "-h", "--help")
 
 def usage():
     print("  predict")
-    print("    Print the probability (%) of keeping a pace, from done.txt history.")
+    print("    Estimate the probability of averaging a target pace.")
     print("      Modes:")
-    print("        pace       maintainability report for a target daily pace")
-    print("          pace     target rate (default: posterior mean rate)")
+    print("        pace       predict maintainability")
+    print("          pace     target daily effort (default: historical mean)")
     print("      Examples:")
     print("        todo.sh predict pace")
     print("        todo.sh predict pace 3.5")
@@ -54,128 +69,254 @@ def fail(message):
 
 def month_length(today):
     first = date(today.year, today.month, 1)
+
     if today.month == 12:
         nxt = date(today.year + 1, 1, 1)
     else:
         nxt = date(today.year, today.month + 1, 1)
-    last = nxt - timedelta(days=1)
-    return (last - first).days + 1
+
+    return (nxt - first).days
 
 
 def year_length(today):
     first = date(today.year, 1, 1)
     last = date(today.year + 1, 1, 1) - timedelta(days=1)
+
     return (last - first).days + 1
 
+
 #----------------------------------------------------------------------------
-# Data (from $DONE_FILE, parsed like `pace`)
+# Data
 #----------------------------------------------------------------------------
+
+class History(NamedTuple):
+    daily: list
+    start: date
+    total: float
+
+    @property
+    def span(self):
+        return len(self.daily)
+
+    @property
+    def mean(self):
+        return self.total / self.span
+
+    @property
+    def median(self):
+        return statistics.median(self.daily)
+
+    @property
+    def stdev(self):
+        return statistics.pstdev(self.daily)
+
+    @property
+    def zero_days(self):
+        return sum(1 for effort in self.daily if effort == 0)
+
+    @property
+    def zero_frequency(self):
+        return self.zero_days / self.span
+
 
 def parse_done(path):
-    """Return (sum of effort values, span of completed days) from `path`."""
-    effort_re = re.compile(r"^effort:([0-9]+(?:\.[0-9]+)?)$")
+    """
+    Read completed tasks and aggregate effort by calendar day.
+
+    Completed dates with valid effort metadata are included and aggregated.
+    Dates without a valid effort entry are not observations.
+    """
+
     if not os.path.isfile(path) or not os.access(path, os.R_OK):
         fail(f"Cannot read done file: {path}")
-    total = 0.0
+
+    daily = {}
     first = None
-    last = None
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            fields = line.split()
-            if len(fields) < 2 or fields[0] != "x":
-                continue
-            try:
-                d = date.fromisoformat(fields[1])
-            except ValueError:
-                continue
-            for tok in fields[2:]:
-                m = effort_re.match(tok)
-                if m:
-                    total += float(m.group(1))
-                    break
-            first = d if first is None else min(first, d)
-            last = d if last is None else max(last, d)
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                fields = line.split()
+
+                if len(fields) < 3 or fields[0] != "x":
+                    continue
+
+                try:
+                    d = date.fromisoformat(fields[1])
+                except ValueError:
+                    continue
+
+                # Future completions are not historical observations.
+                if d > TODAY:
+                    continue
+
+                effort = None
+
+                for tok in fields[2:]:
+                    if tok.startswith("effort:"):
+                        match = EFFORT_RE.fullmatch(tok)
+
+                        if match:
+                            value = float(match.group(1))
+
+                            if math.isfinite(value):
+                                effort = value
+
+                        break
+
+                # Ignore completions without valid effort metadata.
+                if effort is None:
+                    continue
+
+                daily[d] = daily.get(d, 0.0) + effort
+
+                first = d if first is None else min(first, d)
+
+    except OSError as e:
+        fail(f"Cannot read done file: {e}")
+
     if first is None:
-        fail(f"No completions found in done file: {path}")
-    return total, (last - first).days + 1
+        fail(f"No valid effort records found in done file: {path}")
+
+    # Sample recorded effort days only; gaps in the calendar are not zeros.
+    values = [daily[d] for d in sorted(daily)]
+
+    total = math.fsum(values)
+
+    return History(values, first, total)
+
 
 #----------------------------------------------------------------------------
-# Bayesian model (conjugate Gamma-Poisson)
+# Bootstrap prediction
 #----------------------------------------------------------------------------
 
-def posterior(total, span):
-    """Posterior Gamma of the daily effort rate.
+def bootstrap_days(daily, days, block_size, rng):
+    """Sample daily sequences in contiguous blocks with replacement.
 
-    Likelihood: daily effort E ~ Poisson(lambda); prior lambda ~ Gamma(a, b).
-    Posterior: lambda | data ~ Gamma(a + sum(E), b + span_days).
+    Blocks wrap at the end of history so every historical day can start
+    a block, including when shorter horizons use a longer path's prefix.
     """
-    alpha = PRIOR_ALPHA + total
-    beta = PRIOR_BETA + span
-    return alpha, beta
+    n = len(daily)
+    remaining = days
+    while remaining > 0:
+        take = min(block_size, remaining)
+        start = rng.randrange(n)
+        for offset in range(take):
+            yield daily[(start + offset) % n]
+        remaining -= take
 
 
-def maintained_prob(alpha, beta, days, pace):
-    """Probability that the realized effort over `days` meets the target pace.
+def simulate_probability(daily, days, pace, simulations, rng):
+    """Return probability and MC error for meeting average pace over a period."""
+    return simulate_probabilities(daily, (days,), pace, simulations, rng)[days]
 
-    The realized effort is modeled as normal with
-        mean = days * alpha / beta           (posterior mean daily rate x days)
-        sd   = sqrt(days * alpha / beta + days**2 * alpha / beta**2)
-    (the variance of the negative-binomial marginal of the Poisson-Gamma
-    model).  Maintaining a pace of `pace` means realizing at least the
-    target; with a lower target the event is easier, so the probability
-    grows as the pace drops.  A target of 0 or less is met for sure.
-    """
-    target = pace * days
-    if target <= 0:
-        return 1.0
-    mu = days * alpha / beta
-    sd = math.sqrt(mu + days * days * alpha / (beta * beta))
-    z = (mu - target) / sd
-    return 0.5 * math.erfc(-z / math.sqrt(2))
+
+def simulate_probabilities(daily, horizons, pace, simulations, rng):
+    """Estimate average-pace probabilities on shared simulated paths."""
+    horizons = sorted(set(horizons))
+    block_size = min(BLOCK_DAYS, len(daily))
+    successes = dict.fromkeys(horizons, 0)
+
+    for _ in range(simulations):
+        path = bootstrap_days(daily, horizons[-1], block_size, rng)
+        total = 0.0
+        for day, effort in enumerate(path, start=1):
+            total += effort
+            if day in successes and total >= pace * day:
+                successes[day] += 1
+
+    results = {}
+    for days, count in successes.items():
+        probability = count / simulations
+        # Monte Carlo sampling error, not historical uncertainty.
+        error = math.sqrt(probability * (1.0 - probability) / simulations)
+        results[days] = probability, error
+    return results
+
 
 #----------------------------------------------------------------------------
 # Reporting
 #----------------------------------------------------------------------------
 
-def print_report(alpha, beta, pace):
-    lam = alpha / beta
+def print_report(history, pace):
+    """
+    Print historical statistics and simulated maintainability.
+    """
+
     horizons = (
         ("Day", 1),
         ("Week", 7),
         ("Month", month_length(TODAY)),
         ("Year", year_length(TODAY)),
     )
-    print(f"Target pace:    {pace:.2f} effort/day")
-    print(f"Posterior rate: {lam:.3f} effort/day (alpha={alpha:.2f}, beta={beta:.2f})")
+
+    print("Pace Maintainability Report")
+    print("=" * 65)
     print()
-    print(f"{'Period':<8s} {'Target velocity':>16s} {'P(maintain)':>14s}")
-    print(f"{'--------':<8s} {'----------------':>16s} {'--------------':>14s}")
+    print(f"Target pace:        {pace:.2f} effort/day")
+    print(f"Historical average: {history.mean:.2f} effort/day")
+    print(f"Historical median:  {history.median:.2f} effort/day")
+    print(f"Daily deviation:    {history.stdev:.2f} effort/day")
+    print(f"Zero-effort entries: {history.zero_frequency * 100:5.1f}%")
+    print(f"Effort-entry days:  {history.span}")
+    print(f"Simulations:        {SIMULATIONS:,}")
+    print(f"Block size:         {min(BLOCK_DAYS, history.span)} days")
+    print()
+
+    print(f"{'Period':<9s} {'Target effort':>15s} "
+          f"{'P(maintain)':>15s} {'MC error':>12s}")
+
+    print("-" * 55)
+
+    rng = random.Random(RANDOM_SEED)
+    predictions = simulate_probabilities(
+        history.daily, [days for _, days in horizons], pace, SIMULATIONS, rng
+    )
+
     for name, days in horizons:
+        probability, error = predictions[days]
         target = pace * days
-        p = maintained_prob(alpha, beta, days, pace)
-        print(f"{name:<8s} {target:>16.2f} {p * 100:>13.1f}%")
+
+        print(
+            f"{name:<9s} "
+            f"{target:>15.2f} "
+            f"{probability * 100:>14.1f}% "
+            f"±{error * 100:>9.2f} pp"
+        )
+
+    print()
+    print("Interpretation:")
+    print("  Probability = chance of meeting or exceeding target")
+    print("  total effort (target pace × calendar days) over the period.")
+    print("  Extra effort can compensate for a lower-effort day.")
+    print()
+    print("  MC error = Monte Carlo sampling error only.")
+    print("  It does not represent uncertainty in future productivity.")
+
 
 #----------------------------------------------------------------------------
 # Modes
 #----------------------------------------------------------------------------
 
-def run_pace_mode(args, alpha, beta, lam):
-    """Validate pace-mode arguments and print the Bayesian pace report."""
-    pace_arg = args[0] if len(args) >= 1 else None
+def run_pace_mode(args, history):
+    """Validate arguments and run pace prediction."""
 
-    if pace_arg is None:
-        pace = lam
+    if len(args) > 1:
+        fail("Too many arguments. Usage: predict pace [pace]")
+
+    if not args:
+        pace = history.mean
     else:
         try:
-            pace = float(pace_arg)
+            pace = float(args[0])
         except ValueError:
-            fail(f"Pace must be a number: {pace_arg}")
-        if not (pace > 0):
-            fail("Pace must be > 0.")
-        if not math.isfinite(pace):
-            fail("Pace must be finite.")
+            fail(f"Pace must be a number: {args[0]}")
 
-    print_report(alpha, beta, pace)
+        if not math.isfinite(pace) or pace <= 0:
+            fail("Pace must be a finite number greater than zero.")
+
+    print_report(history, pace)
+
 
 #----------------------------------------------------------------------------
 # Main
@@ -184,33 +325,32 @@ def run_pace_mode(args, alpha, beta, lam):
 def main():
     args = sys.argv[1:]
 
-    if args and args[0].lower() in HELP_WORDS:
-        usage()
-        return 0
-
-    # todo.sh passes the action name as the first argument; `todo.sh help`
-    # and `todo.sh shorthelp` pass `usage` as the only argument.
+    # todo.sh passes the action name as the first argument.
     if args and args[0].lower() == "predict":
         args = args[1:]
+
     if args and args[0].lower() in HELP_WORDS:
         usage()
         return 0
 
     if not args:
         fail("Missing predict mode. Use 'predict pace [pace]'.")
+
     mode = args[0].lower()
+
     if mode != "pace":
         fail(f"Unknown predict mode '{args[0]}'.")
+
     args = args[1:]
+
     if args and args[0].lower() in HELP_WORDS:
         usage()
         return 0
 
-    total, span = parse_done(DONE_FILE)
-    alpha, beta = posterior(total, span)
-    lam = alpha / beta
+    history = parse_done(DONE_FILE)
 
-    run_pace_mode(args, alpha, beta, lam)
+    run_pace_mode(args, history)
+
     return 0
 
 

@@ -36,11 +36,35 @@ The repository contains configuration and code, not task data. By default, task 
 | `todo.sh routine show <frequency>\|all` | Lists routine tasks |
 | `todo.sh repeat ITEM [DATE\|DAY]` | Completes and re-adds a task, optionally rescheduling its threshold |
 | `todo.sh pace [daily\|weekly\|monthly\|annual] [count]` | Reports completed effort points per day for each period |
-| `todo.sh predict pace [pace] [tolerance]` | Estimates the probability of maintaining a pace; defaults to the posterior-mean pace and a 20% band |
+| `todo.sh predict pace [pace]` | Estimates the probability that total effort meets the target average pace over each calendar period; historical samples include only days with valid effort entries |
 | `todo.sh popup` | Opens a dialog to add a task |
 | `todo.sh kanban` | Identifies tasks for the board’s columns; board rendering is not implemented yet |
 
 All add-ons support `usage`, `help`, `-h`, and `--help`. The main CLI’s `help`, `shorthelp`, and `listaddons` commands also provide help and add-on listings.
+
+### How `predict pace` estimates probabilities
+
+`predict pace [pace]` reads completed tasks with valid `effort:` values from
+`done.txt`, sums effort recorded on the same date, and uses those daily totals
+as its historical observations. If no pace is supplied, the target is the
+historical mean effort per observation. Future-dated completions and completed
+dates without valid effort entries are excluded.
+
+The prediction uses a moving-block bootstrap: it repeatedly builds simulated
+sequences by sampling historical observations in consecutive blocks of up to
+seven entries. For each sequence, it checks whether cumulative effort by the
+end of each period is at least the target pace multiplied by the period's
+calendar days. The Day result is a one-observation check; Week, Month, and Year
+results ask whether the average over the whole period meets the target. They
+do not require meeting the target every day, so higher-effort days can offset
+lower-effort days.
+
+The reported percentages are estimates from 20,000 simulations. The displayed
+Monte Carlo error describes simulation sampling noise, not uncertainty about
+future productivity. A limitation is that dates without valid effort entries
+are omitted rather than treated as zero-effort days, so sampled observations
+are not necessarily consecutive calendar days even though period targets use
+calendar-day counts.
 
 ## Task conventions
 
@@ -76,4 +100,3 @@ Or run the test file directly:
 ```bash
 python tests/test_predict.py
 ```
-
