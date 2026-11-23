@@ -112,7 +112,7 @@ export TODOTXT_FINAL_FILTER='$HOME/.todo/filters/futureTasks'
 ## default actions
 # Set a default action for calling todo.sh without arguments.
 # Also allows for parameters for the action.
-# export TODOTXT_DEFAULT_ACTION=''
+export TODOTXT_DEFAULT_ACTION='overview'
 
 ## sed capabilities
 # If you have GNU sed or another sed that supports in-place editing
