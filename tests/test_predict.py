@@ -1,15 +1,18 @@
-"""Executable specification for the bootstrap-based `predict` action.
+"""Executable specification for the `predict` action.
 
-Run with pytest or `python tests/test_predict.py`. Histories, dates and random
-seeds are fixed; no real task data is read.
+Covers the historical bootstrap model plus key selection, summary statistics,
+numeric grammar, metadata skipping, and error handling. Histories, dates and
+random seeds are fixed; no real task data is read.
 """
 
 import io
 import math
 import os
 import random
+import re
 import subprocess
 import sys
+import tempfile
 import traceback
 import types
 from contextlib import redirect_stdout
@@ -28,6 +31,72 @@ EFFORT_DAYS = [3.0, 3.5, 4.0]
 HORIZONS = {"Day": 1, "Week": 7, "Month": 30, "Year": 365}
 SIMULATIONS = 1000
 
+# AI-generated code (unreviewed by a human)
+F1 = (
+    "x 2020-11-12 effort:3.0 physical-exertion:2.9 pe:2.9\n"
+    "x 2020-11-13 effort:4.0 physical-exertion:3.0 pe:0\n"
+    "x 2020-11-14 effort:5.0 physical-exertion:3.1 pe:3.1\n"
+)
+F2 = (
+    "x 2020-11-12 effort:1.0 physical-exertion:1.25\n"
+    "x 2020-11-12 effort:2.0 physical-exertion:2.5\n"
+)
+F3 = (
+    "x 2020-11-12 effort:3.0\n"
+    "x 2020-11-13 pe:2.0\n"
+)
+F4 = "x 2020-11-15 pace:2.0\n"
+F5 = (
+    "x 2020-11-16 effort:-2.0\n"
+    "x 2020-11-17 effort:0\n"
+    "x 2020-11-18 effort:1.0\n"
+)
+F6 = (
+    "x 2020-11-19 effort:1e1\n"
+    "x 2020-11-20 effort:.5\n"
+    "x 2020-11-21 effort:-2.5e-1\n"
+)
+F7 = (
+    "x 2020-11-22 effort:2.0\n"
+    "x 2020-11-23 effort:inf\n"
+)
+F8 = (
+    "x 2020-11-22 effort:2.0\n"
+    "x 2020-11-23 effort:-inf\n"
+)
+F9 = (
+    "x 2020-11-25 effort:+2.0\n"
+    "x 2020-11-26 effort:3.\n"
+    "x 2020-11-27 effort:-1.5\n"
+)
+F10 = (
+    "x 2020-11-28 effort:2.0\n"
+    "x 2020-11-29 effort:nan\n"
+)
+F11 = (
+    "x 2020-11-30 effort:2.0\n"
+    "x 2020-12-01 effort:1.2.3\n"
+)
+F12 = (
+    "x 2020-12-02 effort:2.0 due:2020-12-10\n"
+    "x 2020-12-03 effort:3.0 due:2020-12-11\n"
+)
+INVALID_KEY_RECORDS = (
+    "unfinished key:9\n"
+    "x bad-date key:9\n"
+    "x 2099-01-01 key:9\n"
+)
+
+
+# AI-generated code (unreviewed by a human)
+class PredictFailure(Exception):
+    """Raised by the patched fail() helper during unit tests."""
+
+
+# AI-generated code (unreviewed by a human)
+def _raise_failure(message):
+    raise PredictFailure(message)
+
 
 def load_predict():
     module = types.ModuleType("predict")
@@ -39,7 +108,8 @@ def load_predict():
 predict = load_predict()
 
 
-def parse_history(text=DONE_TEXT):
+# AI-generated code (unreviewed by a human)
+def parse_history_raw(text=DONE_TEXT):
     with (
         patch.object(predict, "TODAY", TEST_DATE),
         patch("builtins.open", mock_open(read_data=text)),
@@ -47,6 +117,23 @@ def parse_history(text=DONE_TEXT):
         patch.object(predict.os, "access", return_value=True),
     ):
         return predict.parse_done("synthetic-done.txt")
+
+
+# AI-generated code (unreviewed by a human)
+def parse_history(text=DONE_TEXT):
+    with patch.object(predict, "fail", side_effect=_raise_failure):
+        return parse_history_raw(text)
+
+
+# AI-generated code (unreviewed by a human)
+def parse_error(text):
+    try:
+        parse_history(text)
+    except AssertionError:
+        raise
+    except Exception as exc:
+        return str(exc)
+    raise AssertionError("expected predict to fail")
 
 
 def simulate(daily, days, pace):
@@ -77,6 +164,85 @@ def report_rows(text):
                 float(parts[3]),
             )
     return rows
+
+
+# AI-generated code (unreviewed by a human)
+def run_predict(done_text, *args):
+    with tempfile.TemporaryDirectory(prefix="predict-", dir="/tmp/opencode") as temp:
+        done_file = Path(temp) / "done.txt"
+        done_file.write_text(done_text, encoding="utf-8")
+        env = {**os.environ, "DONE_FILE": str(done_file)}
+        return subprocess.run(
+            [sys.executable, str(ACTION), *args],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+
+
+# AI-generated code (unreviewed by a human)
+def report_stats(text):
+    stats = {}
+    for line in text.splitlines():
+        label, separator, value = line.partition(":")
+        if not separator:
+            continue
+        label = label.strip().lower()
+        if "block" in label:
+            continue
+        number = re.search(r"-?\d+(?:\.\d+)?", value)
+        if not number:
+            continue
+        if "average" in label:
+            stats["average"] = float(number.group())
+        elif "median" in label:
+            stats["median"] = float(number.group())
+        elif "deviation" in label:
+            stats["deviation"] = float(number.group())
+        elif "zero" in label:
+            stats["zero"] = float(number.group())
+        elif "days" in label:
+            stats["days"] = float(number.group())
+    return stats
+
+
+# AI-generated code (unreviewed by a human)
+def assert_report_stats(result, *, average=None, median=None, deviation=None,
+                        zero=None, days=None):
+    assert result.returncode == 0, result.stderr
+    stats = report_stats(result.stdout)
+    checks = (
+        ("average", average, 0.01),
+        ("median", median, 0.01),
+        ("deviation", deviation, 0.01),
+        ("zero", zero, 0.1),
+        ("days", days, 0.01),
+    )
+    for name, expected, tolerance in checks:
+        if expected is None:
+            continue
+        assert name in stats, (name, result.stdout)
+        assert abs(stats[name] - expected) <= tolerance, (
+            name, stats[name], expected
+        )
+
+
+# AI-generated code (unreviewed by a human)
+def assert_no_data(result, key):
+    output = (result.stdout + result.stderr).lower()
+    assert any(
+        phrase in output
+        for phrase in ("no data", "no observations", "not enough data")
+    ), output
+    assert key.lower() in output
+    assert not report_stats(result.stdout), result.stdout
+
+
+# AI-generated code (unreviewed by a human)
+def assert_error_mentions(message, *words):
+    lowered = message.lower()
+    assert any(word in lowered for word in words), message
 
 
 def test_history_excludes_dates_without_effort_entries():
@@ -112,19 +278,17 @@ def test_invalid_and_future_records_are_excluded():
         "unfinished effort:9\n"
         "x bad-date effort:9\n"
         "x 2026-11-20 missing-effort\n"
-        "x 2026-11-20 effort:-1\n"
-        "x 2026-11-20 effort:bad effort:9\n"
         "x 2026-11-22 effort:9\n"
-        "x 2026-11-21 effort:2 effort:9\n"
+        "x 2026-11-21 effort:2\n"
     )
     assert history.daily == [2.0]
 
 
 def test_history_without_valid_effort_is_rejected():
-    with patch.object(predict, "fail", side_effect=ValueError) as fail:
+    with patch.object(predict, "fail", side_effect=PredictFailure) as fail:
         try:
-            parse_history("x 2026-11-21 no-effort\n")
-        except ValueError:
+            parse_history_raw("x 2026-11-21 no-effort\n")
+        except PredictFailure:
             pass
     assert fail.call_args.args == (
         "No valid effort records found in done file: synthetic-done.txt",
@@ -281,7 +445,219 @@ def test_direct_execution_help_needs_no_history():
         [str(ACTION), "usage"], capture_output=True, text=True,
         env={**os.environ, "DONE_FILE": "/nonexistent/predict-history"},
     )
-    assert result.returncode == 0 and "predict pace" in result.stdout
+    assert result.returncode == 0 and "predict" in result.stdout
+
+
+# AI-generated code (unreviewed by a human)
+def test_predict_effort_key_reports_f1_statistics():
+    result = run_predict(F1, "effort")
+    assert_report_stats(
+        result, average=4.0, median=4.0,
+        deviation=math.sqrt(2 / 3), zero=0.0, days=3,
+    )
+
+
+# AI-generated code (unreviewed by a human)
+def test_predict_physical_exertion_key_reports_f1_statistics():
+    result = run_predict(F1, "physical-exertion")
+    assert_report_stats(
+        result, average=3.0, median=3.0,
+        deviation=math.sqrt(1 / 150), zero=0.0, days=3,
+    )
+
+
+# AI-generated code (unreviewed by a human)
+def test_predict_pe_key_reports_f1_statistics():
+    result = run_predict(F1, "pe")
+    assert_report_stats(
+        result, average=2.0, median=2.9,
+        deviation=math.sqrt(6.02 / 3), zero=100 / 3, days=3,
+    )
+
+
+# AI-generated code (unreviewed by a human)
+def test_each_f1_key_keeps_its_own_history():
+    expected = {
+        "effort": (4.0, 4.0),
+        "physical-exertion": (3.0, 3.0),
+        "pe": (2.0, 2.9),
+    }
+    for key, (average, median) in expected.items():
+        assert_report_stats(
+            run_predict(F1, key), average=average, median=median, days=3
+        )
+
+
+# AI-generated code (unreviewed by a human)
+def test_shared_line_values_are_not_merged():
+    result = run_predict(F1, "pe")
+    assert_report_stats(result, average=2.0, days=3)
+    assert abs(report_stats(result.stdout)["average"] - 9.0) > 0.1
+
+
+# AI-generated code (unreviewed by a human)
+def test_same_day_values_aggregate_within_each_key():
+    assert_report_stats(
+        run_predict(F2, "effort"),
+        average=3.0, median=3.0, deviation=0.0, days=1,
+    )
+    assert_report_stats(
+        run_predict(F2, "physical-exertion"),
+        average=3.75, median=3.75, deviation=0.0, days=1,
+    )
+
+
+# AI-generated code (unreviewed by a human)
+def test_missing_key_reports_no_data():
+    assert_no_data(run_predict(F3, "physical-exertion"), "physical-exertion")
+
+
+# AI-generated code (unreviewed by a human)
+def test_key_is_found_regardless_of_token_order():
+    result = run_predict("x 2020-11-12 due:2020-12-01 effort:3.0\n", "effort")
+    assert_report_stats(result, average=3.0, median=3.0, days=1)
+
+
+# AI-generated code (unreviewed by a human)
+def test_bare_predict_requires_a_key():
+    result = run_predict(F1)
+    output = (result.stdout + result.stderr).lower()
+    assert result.returncode != 0
+    assert "historical average" not in output
+    assert "effort-entry days" not in output
+
+
+# AI-generated code (unreviewed by a human)
+def test_date_metadata_is_skipped_when_parsing_effort():
+    assert parse_history(F12).daily == [2.0, 3.0]
+
+
+# AI-generated code (unreviewed by a human)
+def test_absent_key_reports_no_data():
+    assert_no_data(run_predict(F1, "not-present"), "not-present")
+
+
+# AI-generated code (unreviewed by a human)
+def test_repeated_effort_key_is_rejected():
+    message = parse_error("x 2020-11-12 effort:2.0 effort:3.0\n")
+    assert_error_mentions(message, "duplicate", "repeated")
+
+
+# AI-generated code (unreviewed by a human)
+def test_repeated_custom_key_is_rejected():
+    result = run_predict("x 2020-11-12 pe:2.0 pe:3.0\n", "pe")
+    output = (result.stdout + result.stderr).lower()
+    assert result.returncode != 0
+    assert_error_mentions(output, "duplicate", "repeated")
+
+
+# AI-generated code (unreviewed by a human)
+def test_equal_duplicate_values_are_rejected():
+    result = run_predict("x 2020-11-12 pe:2.0 pe:2.0\n", "pe")
+    output = (result.stdout + result.stderr).lower()
+    assert result.returncode != 0
+    assert_error_mentions(output, "duplicate", "repeated")
+
+
+# AI-generated code (unreviewed by a human)
+def test_repeated_key_survives_intervening_metadata():
+    message = parse_error(
+        "x 2020-11-12 effort:2.0 due:2020-12-01 effort:3.0\n"
+    )
+    assert_error_mentions(message, "duplicate", "repeated")
+
+
+# AI-generated code (unreviewed by a human)
+def test_different_keys_on_one_line_are_not_duplicates():
+    assert_report_stats(run_predict(F1, "effort"), average=4.0, days=3)
+
+
+# AI-generated code (unreviewed by a human)
+def test_legacy_pace_target_is_rejected():
+    result = run_predict(F1, "pace", "3.0")
+    output = (result.stdout + result.stderr).lower()
+    assert result.returncode != 0
+    assert "error" in output
+
+
+# AI-generated code (unreviewed by a human)
+def test_pace_metadata_key_is_selectable():
+    assert_report_stats(
+        run_predict(F4, "pace"),
+        average=2.0, median=2.0, deviation=0.0, zero=0.0, days=1,
+    )
+
+
+# AI-generated code (unreviewed by a human)
+def test_selected_key_reports_are_deterministic():
+    first = run_predict(F1, "effort")
+    second = run_predict(F1, "effort")
+    assert first.returncode == 0
+    assert first.stdout == second.stdout
+
+
+# AI-generated code (unreviewed by a human)
+def test_signed_values_are_observations():
+    assert parse_history(F5).daily == [-2.0, 0.0, 1.0]
+
+
+# AI-generated code (unreviewed by a human)
+def test_signed_values_are_reported():
+    assert_report_stats(
+        run_predict(F5, "effort"),
+        average=-1 / 3, median=0.0,
+        deviation=math.sqrt(14 / 9), zero=100 / 3, days=3,
+    )
+
+
+# AI-generated code (unreviewed by a human)
+def test_key_only_on_invalid_records_reports_no_data():
+    assert_no_data(run_predict(INVALID_KEY_RECORDS, "key"), "key")
+
+
+# AI-generated code (unreviewed by a human)
+def test_exponent_and_leading_decimal_values_are_parsed():
+    assert parse_history(F6).daily == [10.0, 0.5, -0.25]
+
+
+# AI-generated code (unreviewed by a human)
+def test_positive_infinity_is_rejected():
+    message = parse_error(F7)
+    assert_error_mentions(message, "inf", "infinite")
+
+
+# AI-generated code (unreviewed by a human)
+def test_negative_infinity_is_rejected():
+    message = parse_error(F8)
+    assert_error_mentions(message, "inf", "infinite")
+
+
+# AI-generated code (unreviewed by a human)
+def test_leading_plus_and_trailing_decimal_values_are_parsed():
+    assert parse_history(F9).daily == [2.0, 3.0, -1.5]
+
+
+# AI-generated code (unreviewed by a human)
+def test_nan_is_rejected():
+    message = parse_error(F10)
+    assert_error_mentions(message, "nan")
+
+
+# AI-generated code (unreviewed by a human)
+def test_malformed_value_is_rejected():
+    message = parse_error(F11)
+    assert_error_mentions(message, "malformed", "invalid number")
+
+
+# AI-generated code (unreviewed by a human)
+def test_date_metadata_key_reports_no_data():
+    assert_no_data(run_predict(F12, "due"), "due")
+
+
+# AI-generated code (unreviewed by a human)
+def test_repeated_key_with_non_numeric_value_is_rejected():
+    message = parse_error("x 2020-11-12 effort:2.0 effort:high\n")
+    assert_error_mentions(message, "duplicate", "repeated")
 
 
 def _run_standalone():
