@@ -29,7 +29,7 @@ The repository contains configuration and code, not task data. By default, task 
 | --- | --- |
 | `todo.sh today [TERM...]` | Shows tasks whose threshold is today or earlier |
 | `todo.sh schedule` | Lists scheduled tasks |
-| `todo.sh schedule <item> <date>` | Sets a task’s threshold |
+| `todo.sh schedule <item[,item...]\|start-end> <date>` | Sets thresholds for one task, a comma-separated list, or an inclusive task-number range |
 | `todo.sh schedule <item> mv <date>` | Moves a task’s threshold |
 | `todo.sh schedule <item> rm` | Removes a task’s threshold |
 | `todo.sh schedule R <date>` | Schedules every task of the specified priority |
