@@ -29,10 +29,10 @@ The repository contains configuration and code, not task data. By default, task 
 | --- | --- |
 | `todo.sh today [TERM...]` | Shows tasks whose threshold is today or earlier |
 | `todo.sh schedule` | Lists scheduled tasks |
-| `todo.sh schedule <item> <date>` | Sets a task’s threshold |
+| `todo.sh schedule <item[,item...]\|start-end> <date>` | Sets thresholds for one task, a comma-separated list, or an inclusive task-number range |
 | `todo.sh schedule <item> mv <date>` | Moves a task’s threshold |
 | `todo.sh schedule <item> rm` | Removes a task’s threshold |
-| `todo.sh schedule R <date>` | Schedules every task of the specified priority |
+| `todo.sh schedule R <date>` | Schedules eligible tasks of the specified priority after one confirmation |
 | `todo.sh routine set <frequency> <task-number> [<date>\|<day>]` | Sets a routine frequency and threshold |
 | `todo.sh routine show <frequency>\|all` | Lists routine tasks |
 | `todo.sh overview` | Displays the configured task views and, optionally, tasks not shown in those views |
@@ -43,6 +43,13 @@ The repository contains configuration and code, not task data. By default, task 
 | `todo.sh kanban` | Identifies tasks for the board’s columns; board rendering is not implemented yet |
 
 All add-ons support `usage`, `help`, `-h`, and `--help`. The main CLI’s `help`, `shorthelp`, and `listaddons` commands also provide help and add-on listings.
+
+Priority-wide date rescheduling normally includes tasks without a threshold or
+with a threshold due today or earlier. Future-scheduled tasks are skipped;
+set `TODO_SCHEDULE_PRIORITY_RESCHEDULE_ALL=true` to include them. Priority-wide
+operations display their affected tasks and ask for one confirmation before
+making changes. Removing schedules with `todo.sh schedule R rm` includes
+future schedules regardless of the setting.
 
 `overview` uses `TODO_OVERVIEW_VIEWS` as an ordered, comma-separated list of
 todo.sh commands. By default it runs `today`, `routine show all`, `ls due`, and

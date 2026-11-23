@@ -130,3 +130,6 @@ export TODOTXT_DEFAULT_ACTION='overview'
 export TODO_OVERVIEW_VIEWS="ls @Routine:daily, today, ls due, schedule"
 export TODO_OVERVIEW_SHOW_REMAINING_TASKS=true # Shows all tasks not shown in the commands at the bottom of the overview
 export TODO_OVERVIEW_DUPLICATE_TASKS=false # Prevents the same task from being shown as you go down the list
+
+# Priority-wide schedule updates skip future-scheduled tasks unless enabled.
+export TODO_SCHEDULE_PRIORITY_RESCHEDULE_ALL=false
