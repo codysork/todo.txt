@@ -1,11 +1,10 @@
-
 #!/usr/bin/env bash
 #
 # @file pace (todo.sh action)
 # @author Cody Sork <codysork@gmail.com> with help from ChatGPT
 # @created 2026-11-04
-# @modified 2026-11-04
-# @description Calculate story-point velocity.
+# @modified 2026-11-23
+# @description Calculate physical, mental, and stress effort velocity.
 #
 # Usage:
 #   todo.sh pace [daily|weekly|monthly|annual] [count]
@@ -30,17 +29,19 @@ usage() {
     echo "Usage: todo.sh pace [daily|weekly|monthly|annual] [count]"
 }
 
-# Sum story points completed within a date range.
+# AI-generated code (unreviewed by a human)
+# Sum a score field completed within a date range.
 # AI-generated code (unreviewed by a human)
 sum_points() {
-    local start="$1"
-    local end="$2"
+    local field="$1"
+    local start="$2"
+    local end="$3"
 
-    awk -v start="$start" -v end="$end" '
+    awk -v field="$field" -v start="$start" -v end="$end" '
         $1 == "x" && $2 >= start && $2 <= end {
             for (i = 3; i <= NF; i++) {
-                if ($i ~ /^effort:[0-9]+([.][0-9]+)?$/) {
-                    sum += substr($i, 8)
+                if ($i ~ ("^" field ":[0-9]+([.][0-9]+)?$")) {
+                    sum += substr($i, length(field) + 2)
                     break
                 }
             }
@@ -67,10 +68,12 @@ days_between() {
 # AI-generated code (unreviewed by a human)
 print_header() {
     echo
-    printf '%-16s %10s %8s %12s\n' \
-        "Period" "Points" "Days" "Effort/day"
-    printf '%-16s %10s %8s %12s\n' \
-        "----------------" "----------" "--------" "------------"
+    printf '%-16s %6s %10s %12s %10s %12s %10s %12s\n' \
+        "Period" "Days" "Physical" "Physical/day" \
+        "Mental" "Mental/day" "Stress" "Stress/day"
+    printf '%-16s %6s %10s %12s %10s %12s %10s %12s\n' \
+        "----------------" "------" "----------" "------------" \
+        "----------" "------------" "----------" "------------"
 }
 
 # Generate a report row.
@@ -81,17 +84,94 @@ report_period() {
     local end="$3"
 
     local days
-    local points
-    local velocity
+    local physical
+    local mental
+    local stress
+    local velocities
+    local physical_per_day
+    local mental_per_day
+    local stress_per_day
 
     days=$(days_between "$start" "$end")
-    points=$(sum_points "$start" "$end")
+    physical=$(sum_points physical "$start" "$end")
+    mental=$(sum_points mental "$start" "$end")
+    stress=$(sum_points stress "$start" "$end")
+    velocities=$(awk \
+        -v physical="$physical" -v mental="$mental" \
+        -v stress="$stress" -v days="$days" \
+        'BEGIN { printf "%.2f %.2f %.2f", physical / days, mental / days, stress / days }')
+    read -r physical_per_day mental_per_day stress_per_day <<< "$velocities"
 
-    velocity=$(awk -v points="$points" -v days="$days" \
-        'BEGIN { printf "%.2f", points / days }')
+    printf '%-16s %6s %10s %12s %10s %12s %10s %12s\n' \
+        "$label" "$days" "$physical" "$physical_per_day" \
+        "$mental" "$mental_per_day" "$stress" "$stress_per_day"
+}
 
-    printf '%-16s %10s %8s %12s\n' \
-        "$label" "$points" "$days" "$velocity"
+# AI-generated code (unreviewed by a human)
+report_mode() {
+    local index
+    local start
+    local end
+    local label
+    local day_of_week
+    local current_week
+    local current_month
+    local next_month
+    local current_year
+    local next_year
+
+    case "$MODE" in
+        day|daily)
+            for ((index = COUNT - 1; index >= 0; index--)); do
+                start=$(date -d "$TODAY - $index days" +%Y-%m-%d)
+                label=$(date -d "$start" '+%Y-%m-%d')
+                report_period "$label" "$start" "$start"
+            done
+            ;;
+
+        week|weekly)
+            day_of_week=$(date -d "$TODAY" +%u)
+            current_week=$(date -d "$TODAY - $((day_of_week - 1)) days" +%Y-%m-%d)
+
+            for ((index = COUNT - 1; index >= 0; index--)); do
+                start=$(date -d "$current_week - $index weeks" +%Y-%m-%d)
+                end=$(date -d "$start + 6 days" +%Y-%m-%d)
+                if [[ "$end" > "$TODAY" ]]; then
+                    end=$TODAY
+                fi
+                label=$(date -d "$start" '+%G-W%V')
+                report_period "$label" "$start" "$end"
+            done
+            ;;
+
+        month|monthly)
+            current_month=$(date -d "$TODAY" +%Y-%m-01)
+            for ((index = COUNT - 1; index >= 0; index--)); do
+                start=$(date -d "$current_month - $index months" +%Y-%m-%d)
+                next_month=$(date -d "$start + 1 month" +%Y-%m-%d)
+                end=$(date -d "$next_month - 1 day" +%Y-%m-%d)
+                if [[ "$end" > "$TODAY" ]]; then
+                    end=$TODAY
+                fi
+                label=$(date -d "$start" '+%b %Y')
+                report_period "$label" "$start" "$end"
+            done
+            ;;
+
+        annual|year|yearly)
+            current_year=$(date -d "$TODAY" +%Y-01-01)
+            for ((index = COUNT - 1; index >= 0; index--)); do
+                start=$(date -d "$current_year - $index years" +%Y-%m-%d)
+                next_year=$(date -d "$start + 1 year" +%Y-%m-%d)
+                end=$(date -d "$next_year - 1 day" +%Y-%m-%d)
+                if [[ "$end" > "$TODAY" ]]; then
+                    end=$TODAY
+                fi
+                label=$(date -d "$start" '+%Y')
+                report_period "$label" "$start" "$end"
+            done
+            ;;
+    esac
 }
 
 #----------------------------------------------------------------------------
@@ -150,79 +230,8 @@ if [[ ! -f "$DONE_FILE" || ! -r "$DONE_FILE" ]]; then
     exit 1
 fi
 
-# Print report header.
+# AI-generated code (unreviewed by a human)
 print_header
-
-case "$MODE" in
-
-    # Daily: Last N days.
-    day|daily)
-        for ((i = COUNT - 1; i >= 0; i--)); do
-            START=$(date -d "$TODAY - $i days" +%Y-%m-%d)
-            LABEL=$(date -d "$START" '+%Y-%m-%d')
-
-            report_period "$LABEL" "$START" "$START"
-        done
-        ;;
-
-    # Weekly: Last N weeks.
-    week|weekly)
-        DOW=$(date -d "$TODAY" +%u)
-        CURRENT_WEEK=$(date -d "$TODAY - $((DOW - 1)) days" +%Y-%m-%d)
-
-        for ((i = COUNT - 1; i >= 0; i--)); do
-            START=$(date -d "$CURRENT_WEEK - $i weeks" +%Y-%m-%d)
-            END=$(date -d "$START + 6 days" +%Y-%m-%d)
-
-            # Do not include future days in the current week.
-            if [[ "$END" > "$TODAY" ]]; then
-                END="$TODAY"
-            fi
-
-            LABEL=$(date -d "$START" '+%G-W%V')
-
-            report_period "$LABEL" "$START" "$END"
-        done
-        ;;
-
-    # Monthly: Last N months.
-    month|monthly)
-        CURRENT_MONTH=$(date -d "$TODAY" +%Y-%m-01)
-
-        for ((i = COUNT - 1; i >= 0; i--)); do
-            START=$(date -d "$CURRENT_MONTH - $i months" +%Y-%m-%d)
-            NEXT_MONTH=$(date -d "$START + 1 month" +%Y-%m-%d)
-            END=$(date -d "$NEXT_MONTH - 1 day" +%Y-%m-%d)
-
-            if [[ "$END" > "$TODAY" ]]; then
-                END="$TODAY"
-            fi
-
-            LABEL=$(date -d "$START" '+%b %Y')
-
-            report_period "$LABEL" "$START" "$END"
-        done
-        ;;
-
-    # Annual: Last N years.
-    annual|year|yearly)
-        CURRENT_YEAR=$(date -d "$TODAY" +%Y-01-01)
-
-        for ((i = COUNT - 1; i >= 0; i--)); do
-            START=$(date -d "$CURRENT_YEAR - $i years" +%Y-%m-%d)
-            NEXT_YEAR=$(date -d "$START + 1 year" +%Y-%m-%d)
-            END=$(date -d "$NEXT_YEAR - 1 day" +%Y-%m-%d)
-
-            if [[ "$END" > "$TODAY" ]]; then
-                END="$TODAY"
-            fi
-
-            LABEL=$(date -d "$START" '+%Y')
-
-            report_period "$LABEL" "$START" "$END"
-        done
-        ;;
-
-esac
+report_mode
 
 echo

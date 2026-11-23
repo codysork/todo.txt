@@ -7,7 +7,7 @@ A collection of configuration, add-ons, and filters for [todo.txt-cli](https://g
 - **Threshold scheduling:** Set a `t:` date to keep a task hidden until it is ready to appear. Tasks with future thresholds are hidden from the normal list and can be shown with `todo.sh -x`.
 - **Recurring routines:** Tag tasks with a frequency such as `@Routine:weekly` and set their next threshold.
 - **Task overview:** Combine configured todo.sh views, suppress duplicates, and optionally show tasks not covered by those views.
-- **Completion tracking:** `pace` reports completed effort points over time; `predict pace` estimates the probability of maintaining a target pace.
+- **Completion tracking:** `pace` reports physical, mental, and stress scores together in one table; `predict pace` estimates the probability of maintaining a target pace.
 - **Task management:** Add tasks through a desktop dialog with `popup`, repeat completed tasks with `repeat`, and view due tasks with `today`.
 - **Kanban groundwork:** `kanban` defines board contexts and computes layout dimensions, but does not yet retrieve tasks or draw the board.
 
@@ -61,7 +61,7 @@ chain and is returned to the action.
 | `todo.sh routine show <frequency>\|all` | Lists routine tasks |
 | `todo.sh overview` | Displays the configured task views, suppresses repeated task numbers by default, and shows remaining active tasks by default |
 | `todo.sh repeat ITEM [DATE\|DAY]` | Completes and re-adds a task, optionally rescheduling its threshold |
-| `todo.sh pace [daily\|weekly\|monthly\|annual] [count]` | Reports completed effort points per day for each period |
+| `todo.sh pace [daily\|weekly\|monthly\|annual] [count]` | Reports physical, mental, and stress totals and daily rates together in one table |
 | `todo.sh predict pace [pace]` | Estimates the probability that total effort meets the target average pace over each calendar period; historical samples include only days with valid effort entries |
 | `todo.sh popup` | Opens a dialog to add a task |
 | `todo.sh kanban` | Kanban scaffold with configured contexts and layout calculations; task retrieval and board rendering are not implemented yet |
@@ -120,7 +120,8 @@ Tasks use todo.txt conventions: priorities such as `(A)`, project tags such as `
 
 - `t:YYYY-MM-DD` for a threshold date
 - `due:YYYY-MM-DD` for a due date
-- `effort:` for decimal scoring values
+- `physical:`, `mental:`, and `stress:` for the separate `pace` score totals
+- `effort:` for the `predict pace` historical model
 - `@Routine:<frequency>` for a routine frequency: `daily`, `weekly`, `monthly`, `quarterly`, `yearly`, or `irregular`
 
 The configuration sorts tasks by threshold date, with undated tasks first. Its final filter hides tasks whose threshold is in the future. Use `todo.sh -x` to show those tasks.

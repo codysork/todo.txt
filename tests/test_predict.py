@@ -97,16 +97,14 @@ class PredictFailure(Exception):
 def _raise_failure(message):
     raise PredictFailure(message)
 
-
+# AI-generated code (unreviewed by a human)
 def load_predict():
     module = types.ModuleType("predict")
     module.__file__ = str(ACTION)
     exec(compile(ACTION.read_text(), str(ACTION), "exec"), module.__dict__)
     return module
 
-
 predict = load_predict()
-
 
 # AI-generated code (unreviewed by a human)
 def parse_history_raw(text=DONE_TEXT):
@@ -135,13 +133,14 @@ def parse_error(text):
         return str(exc)
     raise AssertionError("expected predict to fail")
 
-
+# AI-generated code (unreviewed by a human)
 def simulate(daily, days, pace):
     return predict.simulate_probability(
         daily, days, pace, SIMULATIONS, random.Random(predict.RANDOM_SEED)
     )
 
 
+# AI-generated code (unreviewed by a human)
 def report(pace):
     output = io.StringIO()
     with (
@@ -152,7 +151,7 @@ def report(pace):
         predict.print_report(parse_history(), pace)
     return output.getvalue()
 
-
+# AI-generated code (unreviewed by a human)
 def report_rows(text):
     rows = {}
     for line in text.splitlines():
@@ -244,35 +243,36 @@ def assert_error_mentions(message, *words):
     lowered = message.lower()
     assert any(word in lowered for word in words), message
 
-
+# AI-generated code (unreviewed by a human)
 def test_history_excludes_dates_without_effort_entries():
     assert parse_history().daily == EFFORT_DAYS
 
 
+# AI-generated code (unreviewed by a human)
 def test_history_total_and_effort_entry_day_count():
     history = parse_history()
     assert (history.total, history.start, history.span) == (
         10.5, date(2026, 11, 12), 3
     )
 
-
+# AI-generated code (unreviewed by a human)
 def test_history_statistics_use_effort_entry_days():
     history = parse_history()
     assert (history.mean, history.median, history.zero_days,
             history.zero_frequency) == (3.5, 3.5, 0, 0.0)
 
-
+# AI-generated code (unreviewed by a human)
 def test_history_population_deviation():
     assert math.isclose(parse_history().stdev, math.sqrt(1 / 6))
 
-
+# AI-generated code (unreviewed by a human)
 def test_same_day_effort_is_aggregated():
     history = parse_history(
         "x 2026-11-21 effort:1.25\nx 2026-11-21 effort:2.5\n"
     )
     assert history.daily == [3.75]
 
-
+# AI-generated code (unreviewed by a human)
 def test_invalid_and_future_records_are_excluded():
     history = parse_history(
         "unfinished effort:9\n"
@@ -283,7 +283,7 @@ def test_invalid_and_future_records_are_excluded():
     )
     assert history.daily == [2.0]
 
-
+# AI-generated code (unreviewed by a human)
 def test_history_without_valid_effort_is_rejected():
     with patch.object(predict, "fail", side_effect=PredictFailure) as fail:
         try:
@@ -659,7 +659,7 @@ def test_repeated_key_with_non_numeric_value_is_rejected():
     message = parse_error("x 2020-11-12 effort:2.0 effort:high\n")
     assert_error_mentions(message, "duplicate", "repeated")
 
-
+# AI-generated code (unreviewed by a human)
 def _run_standalone():
     tests = sorted(
         (name, fn) for name, fn in globals().items()
@@ -677,7 +677,6 @@ def _run_standalone():
             print(f"PASS {name}")
     print(f"\n{len(tests) - len(failures)}/{len(tests)} tests passed.")
     return int(bool(failures))
-
 
 if __name__ == "__main__":
     sys.exit(_run_standalone())
