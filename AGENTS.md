@@ -36,6 +36,13 @@ Python scripts rather than forcing patterns that do not fit.
 - Watch for rigidity, fragility, immobility, needless complexity or repetition,
   and opacity.
 
+> ### ⚠️ REQUIRED: Mark AI-generated code
+>
+> **Every newly generated code block must carry the comment
+> `AI-generated code (unreviewed by a human)` until a human has reviewed it.**
+> Use the project's comment syntax (`#` in Bash and Python) and place a marker
+> immediately above each generated function or code block—not at file level.
+
 Adapted from [Clean Code standards](https://gist.githubusercontent.com/wojteklu/73c6914cc446146b8b533c0988cf8d29/raw/c7a44d774fc3b09a0d5f0f58888550ba0ac694b9/clean_code.md).
 
 ## Layout

@@ -18,6 +18,7 @@
 #
 # Dependencies: Python standard library only.
 
+# AI-generated code (unreviewed by a human)
 import math
 import os
 import random
@@ -31,6 +32,7 @@ from typing import NamedTuple
 # Configuration
 #----------------------------------------------------------------------------
 
+# AI-generated code (unreviewed by a human)
 DONE_FILE = os.environ.get("DONE_FILE") or os.path.join(
     os.environ.get("TODO_DIR") or os.path.expanduser("~"), "done.txt"
 )
@@ -51,6 +53,7 @@ EFFORT_RE = re.compile(r"^effort:([0-9]+(?:\.[0-9]+)?)$")
 # Helpers
 #----------------------------------------------------------------------------
 
+# AI-generated code (unreviewed by a human)
 def usage():
     print("  predict")
     print("    Estimate the probability of averaging a target pace.")
@@ -62,11 +65,13 @@ def usage():
     print("        todo.sh predict pace 3.5")
 
 
+# AI-generated code (unreviewed by a human)
 def fail(message):
     print(f"Error: {message}", file=sys.stderr)
     sys.exit(1)
 
 
+# AI-generated code (unreviewed by a human)
 def month_length(today):
     first = date(today.year, today.month, 1)
 
@@ -78,6 +83,7 @@ def month_length(today):
     return (nxt - first).days
 
 
+# AI-generated code (unreviewed by a human)
 def year_length(today):
     first = date(today.year, 1, 1)
     last = date(today.year + 1, 1, 1) - timedelta(days=1)
@@ -89,36 +95,44 @@ def year_length(today):
 # Data
 #----------------------------------------------------------------------------
 
+# AI-generated code (unreviewed by a human)
 class History(NamedTuple):
     daily: list
     start: date
     total: float
 
+    # AI-generated code (unreviewed by a human)
     @property
     def span(self):
         return len(self.daily)
 
+    # AI-generated code (unreviewed by a human)
     @property
     def mean(self):
         return self.total / self.span
 
+    # AI-generated code (unreviewed by a human)
     @property
     def median(self):
         return statistics.median(self.daily)
 
+    # AI-generated code (unreviewed by a human)
     @property
     def stdev(self):
         return statistics.pstdev(self.daily)
 
+    # AI-generated code (unreviewed by a human)
     @property
     def zero_days(self):
         return sum(1 for effort in self.daily if effort == 0)
 
+    # AI-generated code (unreviewed by a human)
     @property
     def zero_frequency(self):
         return self.zero_days / self.span
 
 
+# AI-generated code (unreviewed by a human)
 def parse_done(path):
     """
     Read completed tasks and aggregate effort by calendar day.
@@ -190,6 +204,7 @@ def parse_done(path):
 # Bootstrap prediction
 #----------------------------------------------------------------------------
 
+# AI-generated code (unreviewed by a human)
 def bootstrap_days(daily, days, block_size, rng):
     """Sample daily sequences in contiguous blocks with replacement.
 
@@ -206,11 +221,13 @@ def bootstrap_days(daily, days, block_size, rng):
         remaining -= take
 
 
+# AI-generated code (unreviewed by a human)
 def simulate_probability(daily, days, pace, simulations, rng):
     """Return probability and MC error for meeting average pace over a period."""
     return simulate_probabilities(daily, (days,), pace, simulations, rng)[days]
 
 
+# AI-generated code (unreviewed by a human)
 def simulate_probabilities(daily, horizons, pace, simulations, rng):
     """Estimate average-pace probabilities on shared simulated paths."""
     horizons = sorted(set(horizons))
@@ -238,6 +255,7 @@ def simulate_probabilities(daily, horizons, pace, simulations, rng):
 # Reporting
 #----------------------------------------------------------------------------
 
+# AI-generated code (unreviewed by a human)
 def print_report(history, pace):
     """
     Print historical statistics and simulated maintainability.
@@ -298,6 +316,7 @@ def print_report(history, pace):
 # Modes
 #----------------------------------------------------------------------------
 
+# AI-generated code (unreviewed by a human)
 def run_pace_mode(args, history):
     """Validate arguments and run pace prediction."""
 
@@ -322,6 +341,7 @@ def run_pace_mode(args, history):
 # Main
 #----------------------------------------------------------------------------
 
+# AI-generated code (unreviewed by a human)
 def main():
     args = sys.argv[1:]
 
@@ -354,5 +374,6 @@ def main():
     return 0
 
 
+# AI-generated code (unreviewed by a human)
 if __name__ == "__main__":
     sys.exit(main())

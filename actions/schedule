@@ -13,8 +13,10 @@ TODO_CMD="${TODO_FULL_SH:-${TODO_SH:-todo.sh}}"
 TODO_FILE="${TODO_FILE:-${TODO_DIR:-$HOME}/todo.txt}"
 
 pattern=" t:\([0-9]\{2,4\}[^A-Za-z0-9]\)\{2\}[0-9]\{2,4\}" # not enforcing any particular format
+# AI-generated code (unreviewed by a human)
 TASK_IDS=()
 
+# AI-generated code (unreviewed by a human)
 function usage {
 	echo "  $(basename $0) [<item|item-list|item-range> <date>|<priority> <date>|<item> mv <date>|<item> rm]"
 	echo "    Set, modify or remove date threshold of an item, or schedule"
@@ -112,6 +114,7 @@ function get_tasks_by_priority {
 	sed -n -E "/^[[:space:]]*\([${pri}${pri,,}]\)( |$)/=" "$TODO_FILE"
 }
 
+# AI-generated code (unreviewed by a human)
 function schedule_priority {
 	local pri=$1
 	local param=$2
@@ -182,6 +185,7 @@ function schedule_priority {
 	done
 }
 
+# AI-generated code (unreviewed by a human)
 function get_threshold_date {
 	local task=$1
 	TASK_THRESHOLD=
@@ -208,6 +212,7 @@ function schedule_item {
 	apply_schedule "$item" "$param"
 }
 
+# AI-generated code (unreviewed by a human)
 function normalize_task_number {
 	local number=$1
 	local task_count=$2
@@ -226,6 +231,7 @@ function normalize_task_number {
 	printf '%s' "$number"
 }
 
+# AI-generated code (unreviewed by a human)
 function parse_task_selection {
 	local selection=$1
 	local task_count=$2
@@ -260,6 +266,7 @@ function parse_task_selection {
 	done
 }
 
+# AI-generated code (unreviewed by a human)
 function schedule_items {
 	local selection=$1
 	local param=$2
@@ -293,8 +300,10 @@ function schedule_items {
 	done
 }
 
+# AI-generated code (unreviewed by a human)
 [ "$action" = "usage" ] && usage
 
+# AI-generated code (unreviewed by a human)
 if [ -z "$item" ]; then
 	list
 elif [[ "$item" =~ ^\(?([A-Za-z])\)?$ ]]; then

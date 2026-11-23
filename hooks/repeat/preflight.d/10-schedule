@@ -2,6 +2,7 @@
 #
 # Validate repeat's optional target date and ensure the schedule action exists.
 
+# AI-generated code (unreviewed by a human)
 set -euo pipefail
 
 item=$1

@@ -6,13 +6,16 @@
 # @modified 2026-11-20
 # @description Set or show @Routine:<frequency> tags.
 
+# AI-generated code (unreviewed by a human)
 set -uo pipefail
 
+# AI-generated code (unreviewed by a human)
 TODO_CMD="${TODO_FULL_SH:-${TODO_SH:-todo.sh}}"
 TODO_FILE="${TODO_FILE:-${TODO_DIR:-$HOME}/todo.txt}"
 TODO_SH_NAME="${TODO_SH:-todo.sh}"
 self=$(basename "$0")
 
+# AI-generated code (unreviewed by a human)
 function usage {
 	cat <<EOF
   $self set <frequency> <task-number> [<date>|<day>]
@@ -38,16 +41,19 @@ function usage {
 EOF
 }
 
+# AI-generated code (unreviewed by a human)
 function fail {
 	echo "Routine: $*" >&2
 	exit 1
 }
 
+# AI-generated code (unreviewed by a human)
 function valid_frequency {
 	local frequency=$1
 	[[ "$frequency" =~ ^[a-z][a-z0-9_-]*$ ]]
 }
 
+# AI-generated code (unreviewed by a human)
 function schedule_installed {
 	local this_dir
 	this_dir=$(dirname "$0")
@@ -66,6 +72,7 @@ function schedule_installed {
 	return 1
 }
 
+# AI-generated code (unreviewed by a human)
 function set_routine {
 	local frequency=${1:-}
 	local number=${2:-}
@@ -111,6 +118,7 @@ function set_routine {
 	"$TODO_CMD" schedule "$number" "$date" || fail "could not schedule task $number"
 }
 
+# AI-generated code (unreviewed by a human)
 function show_routine {
 	local frequency=${1:-}
 	local output
@@ -149,6 +157,7 @@ function show_routine {
 	fi
 }
 
+# AI-generated code (unreviewed by a human)
 # todo.sh invokes custom actions with the action name as the first argument.
 if [ "${1:-}" = "$self" ]; then
 	shift

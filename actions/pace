@@ -10,12 +10,14 @@
 # Usage:
 #   todo.sh pace [daily|weekly|monthly|annual] [count]
 
+# AI-generated code (unreviewed by a human)
 set -euo pipefail
 
 #----------------------------------------------------------------------------
 # Configuration
 #----------------------------------------------------------------------------
 
+# AI-generated code (unreviewed by a human)
 DONE_FILE="${DONE_FILE:-${TODO_DIR:-$HOME}/done.txt}"
 TODAY=$(date +%Y-%m-%d)
 
@@ -23,11 +25,13 @@ TODAY=$(date +%Y-%m-%d)
 # Functions
 #----------------------------------------------------------------------------
 
+# AI-generated code (unreviewed by a human)
 usage() {
     echo "Usage: todo.sh pace [daily|weekly|monthly|annual] [count]"
 }
 
 # Sum story points completed within a date range.
+# AI-generated code (unreviewed by a human)
 sum_points() {
     local start="$1"
     local end="$2"
@@ -48,6 +52,7 @@ sum_points() {
 }
 
 # Calculate inclusive calendar days between two dates.
+# AI-generated code (unreviewed by a human)
 days_between() {
     local start="$1"
     local end="$2"
@@ -59,6 +64,7 @@ days_between() {
 }
 
 # Print report header.
+# AI-generated code (unreviewed by a human)
 print_header() {
     echo
     printf '%-16s %10s %8s %12s\n' \
@@ -68,6 +74,7 @@ print_header() {
 }
 
 # Generate a report row.
+# AI-generated code (unreviewed by a human)
 report_period() {
     local label="$1"
     local start="$2"
@@ -91,6 +98,7 @@ report_period() {
 # Main
 #----------------------------------------------------------------------------
 
+# AI-generated code (unreviewed by a human)
 # Validate arguments.
 MODE="${2:-monthly}"
 COUNT="${3:-}"
@@ -218,4 +226,3 @@ case "$MODE" in
 esac
 
 echo
-

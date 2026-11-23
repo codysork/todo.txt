@@ -8,6 +8,7 @@
 #              immediately re-enters it, optionally running configured hooks.
 
 TODO_CMD="${TODO_FULL_SH:-${TODO_SH:-todo.sh}}"
+# AI-generated code (unreviewed by a human)
 REPEAT_ACTION_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 source "$REPEAT_ACTION_DIR/../lib/hooks.sh"
 
@@ -54,6 +55,7 @@ function prepare_task_line {
     echo "$line"
 }
 
+# AI-generated code (unreviewed by a human)
 function repeat_task {
     local item=$1
     local line=$2
@@ -79,6 +81,7 @@ function repeat_task {
     todo_run_hooks repeat after_add "$item" "$new_item" "$target_date" || exit $?
 }
 
+# AI-generated code (unreviewed by a human)
 # --- Main ---
 
 action=$1

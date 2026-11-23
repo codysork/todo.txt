@@ -5,14 +5,17 @@
 # @modified 2026-11-20
 # @purpose Add a task to todo.txt using a graphical popup.
 
+# AI-generated code (unreviewed by a human)
 TODO_SH="todo.sh"
 
 # todo.sh calls add-on actions with "usage" when building help output,
 # but passes the action name first for normal invocations.
+# AI-generated code (unreviewed by a human)
 if [ "${1:-}" = "popup" ]; then
     shift
 fi
 
+# AI-generated code (unreviewed by a human)
 # Answer help requests without opening the dialog.
 case "${1:-}" in
     usage|help|-h|--help)
@@ -24,6 +27,7 @@ EOF
         ;;
 esac
 
+# AI-generated code (unreviewed by a human)
 # Request task description
 task=$(kdialog \
     --title "Add Todo Task" \
@@ -34,6 +38,7 @@ if [[ $? -ne 0 || -z "$task" ]]; then
     exit 0
 fi
 
+# AI-generated code (unreviewed by a human)
 # Add task
 if "$TODO_SH" add "$task"; then
     notify-send "Todo" "Task added: $task"

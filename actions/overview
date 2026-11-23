@@ -9,6 +9,7 @@
 # Usage:
 #   todo.sh overview
 
+# AI-generated code (unreviewed by a human)
 import os
 import re
 import shlex
@@ -16,6 +17,7 @@ import subprocess
 import sys
 
 
+# AI-generated code (unreviewed by a human)
 DEFAULT_VIEWS = "today, routine, ls due, schedule"
 TASK_ID_RE = re.compile(r"^\s*(\d+)\s+")
 ANSI_RE = re.compile(r"\033\[[0-9;]*m")
@@ -23,6 +25,7 @@ TRUE_VALUES = {"1", "true", "yes", "on"}
 FALSE_VALUES = {"0", "false", "no", "off"}
 
 
+# AI-generated code (unreviewed by a human)
 def usage():
     print("  overview")
     print("    Display the configured todo.sh views and remaining tasks.")
@@ -31,11 +34,13 @@ def usage():
     print("        todo.sh overview")
 
 
+# AI-generated code (unreviewed by a human)
 def fail(message):
     print(f"Overview: {message}", file=sys.stderr)
     return 1
 
 
+# AI-generated code (unreviewed by a human)
 def setting_enabled(name, default):
     value = os.environ.get(name, default).strip().lower()
     if value in TRUE_VALUES:
@@ -45,6 +50,7 @@ def setting_enabled(name, default):
     raise ValueError(f"{name} must be true or false, not {value!r}")
 
 
+# AI-generated code (unreviewed by a human)
 def parse_views(value):
     """Parse the configured comma-separated todo.sh command list."""
     views = []
@@ -57,12 +63,14 @@ def parse_views(value):
     return views
 
 
+# AI-generated code (unreviewed by a human)
 def task_id(line):
     plain = ANSI_RE.sub("", line)
     match = TASK_ID_RE.match(plain)
     return match.group(1) if match else None
 
 
+# AI-generated code (unreviewed by a human)
 def run_todo(todo_command, arguments):
     env = os.environ.copy()
     env["TODOTXT_VERBOSE"] = "0"
@@ -84,6 +92,7 @@ def run_todo(todo_command, arguments):
     return result.stdout
 
 
+# AI-generated code (unreviewed by a human)
 def filter_view_output(output, seen, allow_duplicates):
     """Hide repeated task rows while preserving other command output."""
     rendered = []
@@ -99,6 +108,7 @@ def filter_view_output(output, seen, allow_duplicates):
     return rendered
 
 
+# AI-generated code (unreviewed by a human)
 def render_section(title, output, seen, allow_duplicates):
     print(f"=== {title} ===")
     lines = filter_view_output(output, seen, allow_duplicates)
@@ -109,6 +119,7 @@ def render_section(title, output, seen, allow_duplicates):
     print()
 
 
+# AI-generated code (unreviewed by a human)
 def main():
     args = sys.argv[1:]
     if args and args[0] == os.path.basename(__file__):
@@ -161,5 +172,6 @@ def main():
     return 0
 
 
+# AI-generated code (unreviewed by a human)
 if __name__ == "__main__":
     sys.exit(main())
