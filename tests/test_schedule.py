@@ -12,7 +12,7 @@ TODO_SH = "todo.sh"
 
 
 class ScratchTodo:
-    def __init__(self, count):
+    def __init__(self, count, reschedule_all=None):
         self.temp = tempfile.TemporaryDirectory(
             prefix="todo-schedule-", dir="/tmp/opencode"
         )
@@ -33,17 +33,24 @@ class ScratchTodo:
             ),
             encoding="utf-8",
         )
+        if reschedule_all is not None:
+            with self.config.open("a", encoding="utf-8") as config_file:
+                config_file.write(
+                    "export TODO_SCHEDULE_PRIORITY_RESCHEDULE_ALL="
+                    f"{str(reschedule_all).lower()}\n"
+                )
         self.env = {**os.environ, **settings}
         for number in range(1, count + 1):
             result = self.run("add", f"task-{number}")
             assert result.returncode == 0, result.stderr
 
-    def run(self, *args):
+    def run(self, *args, input=None):
         return subprocess.run(
             [TODO_SH, "-d", str(self.config), *args],
             capture_output=True,
             text=True,
             env=self.env,
+            input=input,
             check=False,
         )
 
@@ -177,6 +184,108 @@ def test_schedule_help_documents_ranges_and_lists():
         assert result.returncode == 0
         assert "71-75" in result.stdout
         assert "2,5,9" in result.stdout
+    finally:
+        todo.close()
+
+
+def add_priority_task(todo, text):
+    result = todo.run("add", f"(A) {text}")
+    assert result.returncode == 0, result.stderr
+
+
+def test_priority_reschedule_skips_future_dates_and_confirms_once():
+    todo = ScratchTodo(0, reschedule_all=False)
+    today = date.today()
+    expected = (today + timedelta(days=1)).isoformat()
+    try:
+        add_priority_task(todo, "unscheduled")
+        add_priority_task(todo, f"past t:{today - timedelta(days=1)}")
+        add_priority_task(todo, f"today t:{today}")
+        add_priority_task(todo, f"future t:{today + timedelta(days=7)}")
+
+        result = todo.run("schedule", "A", "tomorrow", input="y\n")
+        assert result.returncode == 0, result.stderr
+        assert result.stderr.count("(y/N)") == 1
+        assert [f"t:{expected}" in line for line in todo.lines()] == [
+            True, True, True, False
+        ]
+        assert "skipping 1 future-scheduled task" in result.stdout
+    finally:
+        todo.close()
+
+
+def test_priority_reschedule_all_includes_future_dates():
+    todo = ScratchTodo(0, reschedule_all=True)
+    today = date.today()
+    expected = (today + timedelta(days=1)).isoformat()
+    try:
+        add_priority_task(todo, f"future t:{today + timedelta(days=7)}")
+        result = todo.run("schedule", "A", "tomorrow", input="y\n")
+        assert result.returncode == 0, result.stderr
+        assert result.stderr.count("(y/N)") == 1
+        assert f"t:{expected}" in todo.lines()[0]
+    finally:
+        todo.close()
+
+
+def test_priority_mv_skips_future_dates_by_default():
+    todo = ScratchTodo(0, reschedule_all=False)
+    today = date.today()
+    expected = (today + timedelta(days=1)).isoformat()
+    future = (today + timedelta(days=7)).isoformat()
+    try:
+        add_priority_task(todo, f"past t:{today - timedelta(days=1)}")
+        add_priority_task(todo, f"future t:{future}")
+        result = todo.run("schedule", "A", "mv", "tomorrow", input="y\n")
+        assert result.returncode == 0, result.stderr
+        assert [f"t:{expected}" in line for line in todo.lines()] == [True, False]
+        assert f"t:{future}" in todo.lines()[1]
+        assert result.stderr.count("(y/N)") == 1
+    finally:
+        todo.close()
+
+
+def test_priority_rm_ignores_reschedule_all_setting():
+    todo = ScratchTodo(0, reschedule_all=False)
+    today = date.today()
+    try:
+        add_priority_task(todo, f"past t:{today - timedelta(days=1)}")
+        add_priority_task(todo, f"future t:{today + timedelta(days=7)}")
+        result = todo.run("schedule", "A", "rm", input="y\n")
+        assert result.returncode == 0, result.stderr
+        assert result.stderr.count("(y/N)") == 1
+        assert all("t:" not in line for line in todo.lines())
+    finally:
+        todo.close()
+
+
+def test_declining_priority_confirmation_changes_nothing():
+    todo = ScratchTodo(0, reschedule_all=False)
+    today = date.today()
+    try:
+        add_priority_task(todo, "unscheduled")
+        add_priority_task(todo, f"future t:{today + timedelta(days=7)}")
+        before = todo.lines()
+        result = todo.run("schedule", "A", "tomorrow", input="n\n")
+        assert result.returncode == 0, result.stderr
+        assert result.stderr.count("(y/N)") == 1
+        assert todo.lines() == before
+        assert "cancelled" in result.stdout
+    finally:
+        todo.close()
+
+
+def test_all_future_priority_tasks_do_not_prompt_by_default():
+    todo = ScratchTodo(0, reschedule_all=False)
+    today = date.today()
+    try:
+        add_priority_task(todo, f"future t:{today + timedelta(days=7)}")
+        before = todo.lines()
+        result = todo.run("schedule", "A", "tomorrow")
+        assert result.returncode == 0, result.stderr
+        assert "(y/N)" not in result.stderr
+        assert todo.lines() == before
+        assert "No eligible tasks" in result.stdout
     finally:
         todo.close()
 
