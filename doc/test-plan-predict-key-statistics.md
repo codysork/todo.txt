@@ -1,14 +1,16 @@
-# Test plan: `todo predict KEY`
+# Test plan: `todo predict KEY` and `todo predict KEY value`
 
 *Plan only — no test code or production code is changed, and no test commands
 were run. This plan reflects the clarified spec: any numeric `key:value`
 field is a separate metric; `todo predict KEY` selects one explicitly named
-metric and reports its known historical statistics. Bare `todo predict` does
-not list all keys. Non-numeric metadata such as dates is skipped. Signed
-values, exponent notation, leading `+`, and leading or trailing decimal points
-are valid; infinity, `NaN`, and malformed numeric values raise errors. Every
-key aggregates by completion date, and a key without observations is identified
-as having no data.*
+metric and reports its known historical statistics. `todo predict KEY value`
+additionally checks the probability of maintaining `value` as an average over
+time, restoring the earlier target-pace feature in a key-specific form. Bare
+`todo predict` does not list all keys. Non-numeric metadata such as dates is
+skipped. Signed values, exponent notation, leading `+`, and leading or trailing
+decimal points are valid; infinity, `NaN`, and malformed numeric values raise
+errors. Every key aggregates by completion date, and a key without observations
+is identified as having no data.*
 
 ## 1. Scope and current behavior
 
@@ -33,10 +35,11 @@ test setup.
 
 `tests/test_predict.py` currently covers `effort:` parsing, same-date
 aggregation, invalid/future record exclusion, history statistics, and report
-output. It does not cover selecting an arbitrary key or keeping separate keys'
-data isolated. Existing tests that invoke the old `predict pace` interface will
-need updating once R7 rejects the trailing target-pace argument; that test
-rewrite is outside this plan.
+output. It does not cover selecting an arbitrary key, keeping separate keys'
+data isolated, or a target-value argument. R7 is revised below to restore the
+target-value form, so `test_legacy_pace_target_is_rejected` now contradicts the
+requirement and must be reversed when tests are next updated; that rewrite is
+outside this plan.
 
 ## 2. Confirmed requirements
 
@@ -58,9 +61,12 @@ rewrite is outside this plan.
 - **R6 — Duplicate key rejection:** if one completed-task line contains the
   same key more than once, `predict` reports an error rather than silently
   summing, choosing one occurrence, or counting the line.
-- **R7 — No legacy target-pace argument:** `todo predict pace <number>` is
-  rejected because the new interface expects a key name, not a target pace.
-  A single `todo predict pace` selects a metadata key named `pace`.
+- **R7 — Target-value argument restored:** `todo predict KEY value` accepts a
+  numeric target average and reports the probability that the selected key's
+  average meets or exceeds it over time. This supersedes the earlier rule that
+  rejected a trailing target-pace argument, so `todo predict pace 3.0` is valid
+  when `pace:` observations exist. (Assumption: `value` is optional and defaults
+  to the historical mean; confirm in §6.)
 - **R8 — Signed numeric values:** negative numeric values are valid
   observations and contribute to the selected key's history and statistics.
 - **R9 — No-data response:** when the selected key has no valid observations,
@@ -81,6 +87,16 @@ rewrite is outside this plan.
 - **R14 — Non-numeric metadata skipped:** non-numeric metadata values, such as
   dates in `due:` or `t:` fields or text tags, are skipped. They do not create
   observations and do not raise malformed-value errors.
+- **R15 — Target probability model:** with a target `value`, `predict` reports
+  for each standard horizon (Day, Week, Month, Year) the probability that the
+  selected key's daily averages meet or exceed `value`. The calculation uses the
+  existing circular moving-block bootstrap over the selected key's per-date
+  aggregated history (R12) with a fixed seed, so repeated runs are deterministic
+  and probabilities stay within 0–100%.
+- **R16 — Target argument validation:** a non-numeric, infinite, or `NaN`
+  target, and an excess third argument (`predict KEY value extra`), are rejected
+  with a diagnostic and produce no partial probability report. Whether zero and
+  negative targets are valid is unresolved (§6).
 
 ## 3. Deterministic fixture
 
@@ -277,6 +293,17 @@ passing.
 | K30 | R13 | Parse F11 with the existing `effort` key | Raises an error that identifies a malformed numeric value; the finite observation is not reported as statistics | fail-first: current parser ignores `effort:1.2.3` and returns the finite observation |
 | K31 | R9, R14 | Run `todo predict due` on F12 | Output says there is no data for `due`; date metadata is skipped rather than parsed or reported as malformed | fail-first after key selection; current action rejects `due` as an unknown mode |
 | K32 | R6, R14 | Parse `effort:2.0 effort:high` with `effort` | Duplicate-key error for `effort`; a repeated key is rejected even when the second value is non-numeric | fail-first: current parser takes the first `effort:` and ignores the second |
+| K33 | R7, R15 | `todo predict effort 3.0` using F1 (effort 3.0, 4.0, 5.0) | Succeeds; target is at or below every observation, so all horizons report 100% probability. Summary statistics from R4 are also expected unless §6 decides otherwise | fail-first: current action rejects `effort` as an unknown mode and has no key-specific target form |
+| K34 | R15 | `todo predict effort 6.0` using F1 | Target exceeds every observation; all horizons report 0% and no success is fabricated | fail-first for target-value handling |
+| K35 | R7, R15 | `todo predict pace 3.0` using F4 (`pace:2.0`, no `effort:` data) | Succeeds using the `pace` key's history; target exceeds the single observation, so probabilities are 0%; the old "No valid effort records" error is absent | fail-first: current action ignores `pace:` metadata and fails for lack of `effort:` |
+| K36 | R2, R15 | Compare `todo predict effort 3.0` and `todo predict pe 3.0` on F1 | Each target is evaluated only against its own key: effort (minimum 3.0) reports 100%, while pe (values 2.9, 0, 3.1) does not, so a target is never applied to another key's history | fail-first for key-specific target evaluation |
+| K37 | R12, R15 | `todo predict effort 3.0` using F2 (same-date effort 1.0 and 2.0) | Same-date values aggregate into one observation of 3.0, so target 3.0 gives 100% on every horizon | fail-first; distinguishes aggregated history from raw tokens |
+| K38 | R9, R15 | `todo predict not-present 3.0` using F1 | Output says there is no data for `not-present`; no probability table is fabricated | fail-first after key selection; today the token is an unknown mode |
+| K39 | R16 | `todo predict effort abc` using F1 | Exits nonzero with a diagnostic that the target is not a valid number; no probability report | fail-first: current action has no target validation on this path |
+| K40 | R16 | `todo predict effort 3.0 extra` using F1 | Exits nonzero with a too-many-arguments diagnostic; no probability report | fail-first for target-form arity validation |
+| K41 | R16 | `todo predict effort nan` and `todo predict effort inf` using F1 | Each exits nonzero with a diagnostic identifying the invalid target; no probability report | fail-first for target finiteness validation |
+| K42 | R15 | Run `todo predict effort 4.0` repeatedly on F1 | Probability output is identical across runs (fixed seed) and all values stay within 0–100% | fail-first for the target-value path |
+| K43 | R15, R8 | `todo predict effort -3.0` using F5 (`-2.0, 0.0, 1.0`) | With an assumed signed target, target -3.0 is at or below every observation, so all horizons report 100% | fail-first; confirm zero and negative targets in §6 |
 
 ## 5. Existing parsing boundaries to preserve
 
@@ -291,6 +318,12 @@ These scenarios reuse existing behavior without expanding the new requirement:
   selected key.
 - No matching valid records must not cause an unrelated task/config/file error
   to masquerade as successful statistics.
+- A target value is an argument, not task metadata: it is not read from
+  `done.txt` and never creates an observation.
+- The selected key's aggregated history determines the averages; the target
+  only sets the success threshold.
+- Omitting the target uses the key's historical mean as the implicit target and
+  does not change which records are parsed.
 
 Negative numbers, exponent notation, leading-decimal notation, leading `+`,
 and a trailing decimal point are explicitly valid. Positive and negative
@@ -323,12 +356,25 @@ Non-numeric metadata is skipped rather than treated as malformed. The current
    exact wording and whether the error identifies line number/key are
    unspecified. Assert nonzero exit and a duplicate-related diagnostic unless
    exact text is decided.
-6. **Prediction output/model:** Confirmed requirement is the summary of known
-   statistics. Should the current bootstrap probability table also be retained
-   for selected-key summaries, or should the command report statistics only?
-   Also confirm how bootstrap probabilities should be interpreted when
-   observations may be negative. Core assertions cover the historical
-   statistics named in R4.
+6. **Prediction output/model:** R4 requires summary statistics and R15 restores
+   target-value probabilities. Should both appear in one report, or should
+   target mode print probabilities only? K33 assumes both. Confirm that the
+   calculation reuses the existing circular moving-block bootstrap with a fixed
+   seed and the rule `total >= value * calendar days`, and how probabilities
+   should be interpreted when observations are negative.
+7. **Optional target default:** R7 assumes `value` may be omitted and defaults
+   to the selected key's historical mean, as the old `predict pace` did. Confirm
+   whether the target is instead required for probability output.
+8. **Zero and negative targets:** R8 permits negative observations. Are zero and
+   negative targets valid? K43 assumes a negative target is accepted; the old
+   CLI rejected non-positive targets.
+9. **`pace` as a key:** With `pace` now a separate action over `physical:`,
+   `mental:`, and `stress:`, does `predict pace 3.0` select a literal `pace:`
+   metadata key (K35), or should `pace` be rejected in favor of `predict
+   physical`, `predict mental`, and `predict stress`?
+10. **Target error details:** Exact wording, output stream, and exit status for
+    invalid, non-finite, and excess arguments are unspecified; tests should
+    assert nonzero exit and a relevant diagnostic rather than exact text.
 
 ## 7. Fail-first expectations
 
@@ -348,10 +394,10 @@ the currently supported `effort` key: today it fails because the parser
 silently accepts the first occurrence. K15–K17 depend on key selection first,
 then verify duplicate-specific rejection; K17 also confirms date metadata
 between duplicates does not hide the conflict. K18 guards against overbroad
-duplicate detection when different keys share a line. K19 fails because the
-current action still accepts the old pace mode and numeric target. K20 fails
-because the current action interprets `pace` as a mode rather than selecting
-the `pace:` key. K13, K24, and K31 should fail only after key selection reaches
+duplicate detection when different keys share a line. K19 is superseded: R7 now
+restores the target-value form, so its test must be reversed instead of kept.
+K20 fails because the current action interprets `pace` as a mode rather than
+selecting the `pace:` key. K13, K24, and K31 should fail only after key selection reaches
 the no-data path; today the command instead rejects the key as an unknown mode.
 K22–K23 fail because the current parser rejects the negative `effort:` value
 while keeping the zero and positive entries. The no-data tests should assert a
@@ -369,6 +415,20 @@ same first-occurrence reason as K14 and confirms that duplicate rejection takes
 priority over skipping a non-numeric second value. K6's same-date aggregation
 is confirmed for every key by R12; only the arbitrary-key path remains
 fail-first.
+
+K33–K43 cover the restored target-value form and should fail for application
+reasons, not setup: K33–K35 and K38 currently fail because a non-`pace` key is
+rejected or `pace:` metadata is ignored, while K36–K37, K42, and K43 need
+key-specific target evaluation once selection exists. K33–K34 use targets at or
+beyond every observation so the expected 100%/0% results do not depend on
+bootstrap sampling details. K35 also passes only if the target is applied to the
+selected key's history rather than the old hard-coded `effort:` data. K39–K41
+need argument validation that the current action does not perform on this path;
+today all three are rejected as unknown modes, so they fail on the diagnostic
+rather than on missing target validation.
+K42 checks deterministic output, and K43 assumes signed targets are valid. The
+tests should assert probability bounds and key-specific thresholds without
+pinning exact intermediate percentages until §6 confirms the model.
 
 The plan is intentionally limited to the clarified requirements and existing
 predict statistics. It does not prescribe new algorithms, task-file formats,

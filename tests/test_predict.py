@@ -17,6 +17,7 @@ import traceback
 import types
 from contextlib import redirect_stdout
 from datetime import date
+from functools import lru_cache
 from pathlib import Path
 from unittest.mock import mock_open, patch
 
@@ -118,12 +119,14 @@ def parse_history_raw(text=DONE_TEXT):
 
 
 # AI-generated code (unreviewed by a human)
+@lru_cache(maxsize=None)
 def parse_history(text=DONE_TEXT):
     with patch.object(predict, "fail", side_effect=_raise_failure):
         return parse_history_raw(text)
 
 
 # AI-generated code (unreviewed by a human)
+@lru_cache(maxsize=None)
 def parse_error(text):
     try:
         parse_history(text)
@@ -134,14 +137,25 @@ def parse_error(text):
     raise AssertionError("expected predict to fail")
 
 # AI-generated code (unreviewed by a human)
-def simulate(daily, days, pace):
+def simulate_uncached(daily, days, pace):
     return predict.simulate_probability(
         daily, days, pace, SIMULATIONS, random.Random(predict.RANDOM_SEED)
     )
 
 
 # AI-generated code (unreviewed by a human)
-def report(pace):
+@lru_cache(maxsize=None)
+def _simulate_cached(daily, days, pace):
+    return simulate_uncached(daily, days, pace)
+
+
+# AI-generated code (unreviewed by a human)
+def simulate(daily, days, pace):
+    return _simulate_cached(tuple(daily), days, pace)
+
+
+# AI-generated code (unreviewed by a human)
+def report_uncached(pace):
     output = io.StringIO()
     with (
         patch.object(predict, "TODAY", TEST_DATE),
@@ -150,6 +164,12 @@ def report(pace):
     ):
         predict.print_report(parse_history(), pace)
     return output.getvalue()
+
+
+# AI-generated code (unreviewed by a human)
+@lru_cache(maxsize=None)
+def report(pace):
+    return report_uncached(pace)
 
 # AI-generated code (unreviewed by a human)
 def report_rows(text):
@@ -166,7 +186,7 @@ def report_rows(text):
 
 
 # AI-generated code (unreviewed by a human)
-def run_predict(done_text, *args):
+def run_predict_uncached(done_text, *args):
     with tempfile.TemporaryDirectory(prefix="predict-", dir="/tmp/opencode") as temp:
         done_file = Path(temp) / "done.txt"
         done_file.write_text(done_text, encoding="utf-8")
@@ -181,6 +201,13 @@ def run_predict(done_text, *args):
 
 
 # AI-generated code (unreviewed by a human)
+@lru_cache(maxsize=None)
+def run_predict(done_text, *args):
+    return run_predict_uncached(done_text, *args)
+
+
+# AI-generated code (unreviewed by a human)
+@lru_cache(maxsize=None)
 def report_stats(text):
     stats = {}
     for line in text.splitlines():
@@ -242,6 +269,31 @@ def assert_no_data(result, key):
 def assert_error_mentions(message, *words):
     lowered = message.lower()
     assert any(word in lowered for word in words), message
+
+
+# AI-generated code (unreviewed by a human)
+@lru_cache(maxsize=None)
+def probability_rows(text):
+    rows = {}
+    for line in text.splitlines():
+        parts = line.replace("±", "").split()
+        if not parts or parts[0].rstrip(":") not in HORIZONS:
+            continue
+        percentages = re.findall(r"(\d+(?:\.\d+)?)%", line)
+        if percentages:
+            rows[parts[0].rstrip(":")] = float(percentages[0])
+    return rows
+
+
+# AI-generated code (unreviewed by a human)
+def assert_probability_report(result, expected=None):
+    assert result.returncode == 0, result.stderr
+    rows = probability_rows(result.stdout)
+    assert set(rows) == set(HORIZONS), result.stdout
+    assert all(0.0 <= probability <= 100.0 for probability in rows.values()), rows
+    if expected is not None:
+        assert all(abs(rows[name] - expected) <= 0.1 for name in HORIZONS), rows
+    return rows
 
 # AI-generated code (unreviewed by a human)
 def test_history_excludes_dates_without_effort_entries():
@@ -388,7 +440,9 @@ def test_mc_error_matches_binomial_sampling_error():
 
 
 def test_predictions_are_reproducible():
-    assert simulate(EFFORT_DAYS, 30, 1.0) == simulate(EFFORT_DAYS, 30, 1.0)
+    assert simulate_uncached(EFFORT_DAYS, 30, 1.0) == simulate_uncached(
+        EFFORT_DAYS, 30, 1.0
+    )
 
 
 def test_lower_targets_never_reduce_probability():
@@ -431,7 +485,7 @@ def test_zero_pace_report():
 
 
 def test_report_is_reproducible():
-    assert report(1.0) == report(1.0)
+    assert report_uncached(1.0) == report_uncached(1.0)
 
 
 def test_report_describes_average_pace_and_recorded_days():
@@ -573,11 +627,8 @@ def test_different_keys_on_one_line_are_not_duplicates():
 
 
 # AI-generated code (unreviewed by a human)
-def test_legacy_pace_target_is_rejected():
-    result = run_predict(F1, "pace", "3.0")
-    output = (result.stdout + result.stderr).lower()
-    assert result.returncode != 0
-    assert "error" in output
+def test_pace_key_accepts_target_value():
+    assert_probability_report(run_predict(F4, "pace", "3.0"), expected=0.0)
 
 
 # AI-generated code (unreviewed by a human)
@@ -590,8 +641,8 @@ def test_pace_metadata_key_is_selectable():
 
 # AI-generated code (unreviewed by a human)
 def test_selected_key_reports_are_deterministic():
-    first = run_predict(F1, "effort")
-    second = run_predict(F1, "effort")
+    first = run_predict_uncached(F1, "effort")
+    second = run_predict_uncached(F1, "effort")
     assert first.returncode == 0
     assert first.stdout == second.stdout
 
@@ -658,6 +709,91 @@ def test_date_metadata_key_reports_no_data():
 def test_repeated_key_with_non_numeric_value_is_rejected():
     message = parse_error("x 2020-11-12 effort:2.0 effort:high\n")
     assert_error_mentions(message, "duplicate", "repeated")
+
+
+# AI-generated code (unreviewed by a human)
+def test_target_at_or_below_every_observation_is_certain():
+    result = run_predict(F1, "effort", "3.0")
+    assert_probability_report(result, expected=100.0)
+    assert_report_stats(result, average=4.0, days=3)
+
+
+# AI-generated code (unreviewed by a human)
+def test_target_above_every_observation_is_impossible():
+    assert_probability_report(run_predict(F1, "effort", "6.0"), expected=0.0)
+
+
+# AI-generated code (unreviewed by a human)
+def test_target_is_evaluated_only_for_selected_key():
+    effort = assert_probability_report(
+        run_predict(F1, "effort", "3.0"), expected=100.0
+    )
+    pe = assert_probability_report(run_predict(F1, "pe", "3.0"))
+    assert pe["Day"] < effort["Day"], (pe, effort)
+
+
+# AI-generated code (unreviewed by a human)
+def test_target_uses_same_day_aggregated_history():
+    assert_probability_report(run_predict(F2, "effort", "3.0"), expected=100.0)
+
+
+# AI-generated code (unreviewed by a human)
+def test_target_with_missing_key_reports_no_data():
+    result = run_predict(F1, "not-present", "3.0")
+    assert_no_data(result, "not-present")
+    assert not probability_rows(result.stdout)
+
+
+# AI-generated code (unreviewed by a human)
+def test_invalid_target_is_rejected():
+    result = run_predict(F1, "effort", "abc")
+    output = (result.stdout + result.stderr).lower()
+    assert result.returncode != 0
+    assert_error_mentions(output, "number", "numeric", "invalid")
+    assert not probability_rows(result.stdout)
+
+
+# AI-generated code (unreviewed by a human)
+def test_extra_argument_after_target_is_rejected():
+    result = run_predict(F1, "effort", "3.0", "extra")
+    output = (result.stdout + result.stderr).lower()
+    assert result.returncode != 0
+    assert_error_mentions(output, "argument", "usage", "many")
+    assert not probability_rows(result.stdout)
+
+
+# AI-generated code (unreviewed by a human)
+def test_nan_target_is_rejected():
+    result = run_predict(F1, "effort", "nan")
+    output = (result.stdout + result.stderr).lower()
+    assert result.returncode != 0
+    assert "nan" in output
+    assert not probability_rows(result.stdout)
+
+
+# AI-generated code (unreviewed by a human)
+def test_infinite_target_is_rejected():
+    result = run_predict(F1, "effort", "inf")
+    output = (result.stdout + result.stderr).lower()
+    assert result.returncode != 0
+    assert_error_mentions(output, "inf", "finite")
+    assert not probability_rows(result.stdout)
+
+
+# AI-generated code (unreviewed by a human)
+def test_target_report_is_deterministic():
+    first = run_predict_uncached(F1, "effort", "4.0")
+    second = run_predict_uncached(F1, "effort", "4.0")
+    assert_probability_report(first)
+    assert first.stdout == second.stdout
+
+
+# AI-generated code (unreviewed by a human)
+def test_negative_target_is_certain_with_signed_observations():
+    assert_probability_report(
+        run_predict(F5, "effort", "-3.0"), expected=100.0
+    )
+
 
 # AI-generated code (unreviewed by a human)
 def _run_standalone():
