@@ -1,4 +1,4 @@
-"""Scratch-data CLI tests for the three `todo pace` score tables."""
+"""Scratch-data CLI tests for the combined `todo pace` score table."""
 
 # AI-generated code (unreviewed by a human)
 import os
@@ -43,25 +43,6 @@ def run_pace(done_text):
 
 
 # AI-generated code (unreviewed by a human)
-def metric_rows(output, metric):
-    lines = output.splitlines()
-    title = f"{metric.title()} effort"
-    start = lines.index(title) + 3
-    rows = {}
-    for line in lines[start:]:
-        if not line.strip():
-            break
-        parts = line.split()
-        if len(parts) == 4:
-            rows[parts[0]] = (
-                float(parts[1]),
-                int(parts[2]),
-                float(parts[3]),
-            )
-    return rows
-
-
-# AI-generated code (unreviewed by a human)
 def sample_done_history():
     today = date.today()
     yesterday = today - timedelta(days=1)
@@ -73,38 +54,39 @@ def sample_done_history():
 
 
 # AI-generated code (unreviewed by a human)
-def test_pace_prints_three_separate_tables():
+def pace_rows(output):
+    rows = {}
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) != 8 or parts[0] == "Period" or parts[0].startswith("-"):
+            continue
+        rows[parts[0]] = tuple(float(part) for part in parts[1:])
+    return rows
+
+
+# AI-generated code (unreviewed by a human)
+def test_pace_prints_one_combined_table():
     _today, done_text = sample_done_history()
     output = run_pace(done_text)
-    assert [title for title in (
-        "Physical effort", "Mental effort", "Stress effort"
-    ) if title in output] == [
-        "Physical effort", "Mental effort", "Stress effort"
+    headers = [
+        line for line in output.splitlines()
+        if line.split() and line.split()[0] == "Period"
     ]
+    assert len(headers) == 1, output
+    for name in ("Physical", "Mental", "Stress"):
+        assert name in headers[0], headers[0]
 
 
 # AI-generated code (unreviewed by a human)
-def test_physical_table_sums_only_physical_scores():
+def test_pace_rows_report_all_three_scores():
     today, done_text = sample_done_history()
-    rows = metric_rows(run_pace(done_text), "physical")
-    assert rows[today.isoformat()] == (7.0, 1, 7.0)
+    rows = pace_rows(run_pace(done_text))
+    yesterday = (today - timedelta(days=1)).isoformat()
+    assert set(rows) == {today.isoformat(), yesterday}
+    assert rows[yesterday] == (1.0, 2.0, 2.0, 20.0, 20.0, 200.0, 200.0)
+    assert rows[today.isoformat()] == (1.0, 7.0, 7.0, 70.0, 70.0, 700.0, 700.0)
 
 
-# AI-generated code (unreviewed by a human)
-def test_mental_table_sums_only_mental_scores():
-    today, done_text = sample_done_history()
-    rows = metric_rows(run_pace(done_text), "mental")
-    assert rows[today.isoformat()] == (70.0, 1, 70.0)
-
-
-# AI-generated code (unreviewed by a human)
-def test_stress_table_sums_only_stress_scores():
-    today, done_text = sample_done_history()
-    rows = metric_rows(run_pace(done_text), "stress")
-    assert rows[today.isoformat()] == (700.0, 1, 700.0)
-
-
-# AI-generated code (unreviewed by a human)
 if __name__ == "__main__":
     tests = [
         value for name, value in globals().items()

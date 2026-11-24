@@ -156,7 +156,8 @@ Bash actions and `config` carry a metadata block:
   and decimal scoring fields such as `physical:`, `mental:`, `stress:`, and
   `effort:`.
 - `pace` reports `physical:`, `mental:`, and `stress:` totals from completed
-  lines in `done.txt`; `predict pace` uses `effort:` observations.
+  lines in `done.txt`; `predict KEY` reports statistics for the selected
+  numeric metadata key.
 - Routine tasks use `@Routine:<frequency>` (`daily`, `weekly`, `monthly`,
   `quarterly`, `yearly`, `irregular`).
 - `config` sorts list output by `t:` (undated lines sort first as

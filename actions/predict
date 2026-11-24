@@ -3,18 +3,13 @@
 # @file predict (todo.sh action)
 # @author Cody Sork <codysork@gmail.com> with help from AI agents
 # @created 2026-11-21
-# @modified 2026-11-22
-# @description Estimate the probability (%) of averaging a target pace,
-#              using historical effort-entry days and bootstrap simulation.
+# @modified 2026-11-23
+# @description Report historical statistics for one numeric task metadata key.
 #
 # Usage:
-#   todo.sh predict pace [pace]
+#   todo.sh predict KEY
 #
-#   pace       target daily effort rate (default: historical mean)
-#
-# Model:
-#   Circular moving-block bootstrap of daily effort entries.
-#   Success is total simulated effort >= pace * calendar days.
+#   KEY        numeric key:value field to summarize (for example effort)
 #
 # Dependencies: Python standard library only.
 
@@ -39,15 +34,20 @@ DONE_FILE = os.environ.get("DONE_FILE") or os.path.join(
 
 TODAY = date.today()
 
+# AI-generated code (unreviewed by a human)
 SIMULATIONS = 20_000
 BLOCK_DAYS = 7
-
-# Fixed seed ensures reproducible predictions.
 RANDOM_SEED = 0
 
 HELP_WORDS = ("usage", "help", "-h", "--help")
 
-EFFORT_RE = re.compile(r"^effort:([0-9]+(?:\.[0-9]+)?)$")
+# AI-generated code (unreviewed by a human)
+METADATA_KEY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
+NUMBER_RE = re.compile(
+    r"^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$"
+)
+NUMERIC_LIKE_RE = re.compile(r"^[+\-.0-9]")
+DATE_VALUE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 
 #----------------------------------------------------------------------------
 # Helpers
@@ -56,13 +56,12 @@ EFFORT_RE = re.compile(r"^effort:([0-9]+(?:\.[0-9]+)?)$")
 # AI-generated code (unreviewed by a human)
 def usage():
     print("  predict")
-    print("    Estimate the probability of averaging a target pace.")
-    print("      Modes:")
-    print("        pace       predict maintainability")
-    print("          pace     target daily effort (default: historical mean)")
+    print("    Report historical statistics for one numeric task metadata key.")
+    print("      KEY        key to summarize, such as effort or physical-exertion")
     print("      Examples:")
-    print("        todo.sh predict pace")
-    print("        todo.sh predict pace 3.5")
+    print("        todo.sh predict effort")
+    print("        todo.sh predict physical-exertion")
+    print("        todo.sh predict pe")
 
 
 # AI-generated code (unreviewed by a human)
@@ -100,6 +99,7 @@ class History(NamedTuple):
     daily: list
     start: date
     total: float
+    key: str
 
     # AI-generated code (unreviewed by a human)
     @property
@@ -133,14 +133,10 @@ class History(NamedTuple):
 
 
 # AI-generated code (unreviewed by a human)
-def parse_done(path):
-    """
-    Read completed tasks and aggregate effort by calendar day.
-
-    Completed dates with valid effort metadata are included and aggregated.
-    Dates without a valid effort entry are not observations.
-    """
-
+def parse_done(path, key="effort"):
+    """Parse one numeric metadata key and aggregate it by completion date."""
+    if not METADATA_KEY_RE.fullmatch(key):
+        fail(f"Invalid metadata key: {key}")
     if not os.path.isfile(path) or not os.access(path, os.R_OK):
         fail(f"Cannot read done file: {path}")
 
@@ -149,56 +145,66 @@ def parse_done(path):
 
     try:
         with open(path, encoding="utf-8") as f:
-            for line in f:
+            for line_number, line in enumerate(f, start=1):
                 fields = line.split()
-
                 if len(fields) < 3 or fields[0] != "x":
                     continue
 
                 try:
-                    d = date.fromisoformat(fields[1])
+                    completed = date.fromisoformat(fields[1])
                 except ValueError:
                     continue
-
-                # Future completions are not historical observations.
-                if d > TODAY:
+                if completed > TODAY:
                     continue
 
-                effort = None
-
-                for tok in fields[2:]:
-                    if tok.startswith("effort:"):
-                        match = EFFORT_RE.fullmatch(tok)
-
-                        if match:
-                            value = float(match.group(1))
-
-                            if math.isfinite(value):
-                                effort = value
-
-                        break
-
-                # Ignore completions without valid effort metadata.
-                if effort is None:
+                values = [
+                    token.partition(":")[2]
+                    for token in fields[2:]
+                    if token.partition(":")[0] == key and ":" in token
+                ]
+                if len(values) > 1:
+                    fail(
+                        f"Duplicate key '{key}' on line {line_number} "
+                        f"in done file: {path}"
+                    )
+                if not values:
                     continue
 
-                daily[d] = daily.get(d, 0.0) + effort
+                raw_value = values[0]
+                if DATE_VALUE_RE.fullmatch(raw_value):
+                    continue
+                try:
+                    value = float(raw_value)
+                except ValueError:
+                    if not raw_value or NUMERIC_LIKE_RE.match(raw_value):
+                        fail(
+                            f"Malformed numeric value for key '{key}' "
+                            f"on line {line_number}: {raw_value!r}"
+                        )
+                    continue
 
-                first = d if first is None else min(first, d)
+                if math.isnan(value):
+                    fail(f"NaN value for key '{key}' on line {line_number}.")
+                if math.isinf(value):
+                    fail(f"Infinite value for key '{key}' on line {line_number}.")
+                if not NUMBER_RE.fullmatch(raw_value):
+                    fail(
+                        f"Malformed numeric value for key '{key}' "
+                        f"on line {line_number}: {raw_value!r}"
+                    )
 
-    except OSError as e:
-        fail(f"Cannot read done file: {e}")
+                daily[completed] = daily.get(completed, 0.0) + value
+                first = completed if first is None else min(first, completed)
+    except OSError as error:
+        fail(f"Cannot read done file: {error}")
 
     if first is None:
-        fail(f"No valid effort records found in done file: {path}")
+        if key == "effort":
+            fail(f"No valid effort records found in done file: {path}")
+        fail(f"No data for key '{key}' in done file: {path}")
 
-    # Sample recorded effort days only; gaps in the calendar are not zeros.
-    values = [daily[d] for d in sorted(daily)]
-
-    total = math.fsum(values)
-
-    return History(values, first, total)
-
+    values = [daily[completed] for completed in sorted(daily)]
+    return History(values, first, math.fsum(values), key)
 
 #----------------------------------------------------------------------------
 # Bootstrap prediction
@@ -271,12 +277,17 @@ def print_report(history, pace):
     print("Pace Maintainability Report")
     print("=" * 65)
     print()
-    print(f"Target pace:        {pace:.2f} effort/day")
-    print(f"Historical average: {history.mean:.2f} effort/day")
-    print(f"Historical median:  {history.median:.2f} effort/day")
-    print(f"Daily deviation:    {history.stdev:.2f} effort/day")
-    print(f"Zero-effort entries: {history.zero_frequency * 100:5.1f}%")
-    print(f"Effort-entry days:  {history.span}")
+    print(f"Selected key:       {history.key}")
+    print(f"Target pace:        {pace:.2f} {history.key}/day")
+    print(f"Historical average: {history.mean:.2f} {history.key}/day")
+    print(f"Historical median:  {history.median:.2f} {history.key}/day")
+    print(f"Daily deviation:    {history.stdev:.2f} {history.key}/day")
+    print(f"Zero-value frequency: {history.zero_frequency * 100:5.1f}%")
+    # AI-generated code (unreviewed by a human)
+    if history.key == "effort":
+        print(f"Effort-entry days:  {history.span}")
+    else:
+        print(f"Observation days:   {history.span}")
     print(f"Simulations:        {SIMULATIONS:,}")
     print(f"Block size:         {min(BLOCK_DAYS, history.span)} days")
     print()
@@ -317,25 +328,17 @@ def print_report(history, pace):
 #----------------------------------------------------------------------------
 
 # AI-generated code (unreviewed by a human)
-def run_pace_mode(args, history):
-    """Validate arguments and run pace prediction."""
+def run_key_mode(args):
+    """Load and report one explicitly selected metadata key."""
+    if len(args) != 1:
+        fail("Usage: todo.sh predict KEY (exactly one metadata key is required).")
 
-    if len(args) > 1:
-        fail("Too many arguments. Usage: predict pace [pace]")
+    key = args[0]
+    if not METADATA_KEY_RE.fullmatch(key):
+        fail(f"Invalid metadata key: {key}")
 
-    if not args:
-        pace = history.mean
-    else:
-        try:
-            pace = float(args[0])
-        except ValueError:
-            fail(f"Pace must be a number: {args[0]}")
-
-        if not math.isfinite(pace) or pace <= 0:
-            fail("Pace must be a finite number greater than zero.")
-
-    print_report(history, pace)
-
+    history = parse_done(DONE_FILE, key)
+    print_report(history, history.mean)
 
 #----------------------------------------------------------------------------
 # Main
@@ -354,23 +357,9 @@ def main():
         return 0
 
     if not args:
-        fail("Missing predict mode. Use 'predict pace [pace]'.")
+        fail("Usage: todo.sh predict KEY (name one numeric metadata key).")
 
-    mode = args[0].lower()
-
-    if mode != "pace":
-        fail(f"Unknown predict mode '{args[0]}'.")
-
-    args = args[1:]
-
-    if args and args[0].lower() in HELP_WORDS:
-        usage()
-        return 0
-
-    history = parse_done(DONE_FILE)
-
-    run_pace_mode(args, history)
-
+    run_key_mode(args)
     return 0
 
 
