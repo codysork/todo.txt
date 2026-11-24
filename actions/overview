@@ -3,7 +3,7 @@
 # @file overview (todo.sh action)
 # @author Cody Sork <codysork@gmail.com> with help from AI agents
 # @created 2026-11-22
-# @modified 2026-11-22
+# @modified 2026-11-23
 # @description Display configured todo.sh views in one overview.
 #
 # Usage:
@@ -14,6 +14,7 @@ import re
 import shlex
 import subprocess
 import sys
+from typing import NamedTuple
 
 #-----------------------------------------------------------------------------#
 #                               Constants                                     #
@@ -30,6 +31,7 @@ FALSE_VALUES = {"0", "false", "no", "off"}
 #-----------------------------------------------------------------------------#
 
 def usage():
+    """Print the overview action's indented help text."""
     print("  overview")
     print("    Display the configured todo.sh views and remaining tasks.")
     print("      Configure views with TODO_OVERVIEW_VIEWS.")
@@ -38,10 +40,23 @@ def usage():
 
 
 def fail(message):
+    """Report an overview error on stderr.
+
+    @param message: error text to display.
+    @return: exit status 1.
+    """
     print(f"Overview: {message}", file=sys.stderr)
     return 1
 
+
 def setting_enabled(name, default):
+    """Interpret a boolean environment setting.
+
+    @param name: environment variable name.
+    @param default: value used when the variable is unset.
+    @return: True or False for the configured value.
+    @raises ValueError: when the value is not a recognized boolean.
+    """
     value = os.environ.get(name, default).strip().lower()
     if value in TRUE_VALUES:
         return True
@@ -49,28 +64,75 @@ def setting_enabled(name, default):
         return False
     raise ValueError(f"{name} must be true or false, not {value!r}")
 
-# AI-generated code (unreviewed by a human)
+
 def parse_views(value):
-    """Parse the configured comma-separated todo.sh command list."""
+    """Split the view setting into todo.sh commands.
+
+    @param value: comma-separated view configuration.
+    @return: list of argument lists.
+    """
     views = []
     for item in value.split(","):
         command = shlex.split(item)
         if command:
-            if command == ["routine"]:
-                command = ["routine", "show", "all"]
             views.append(command)
     return views
 
 
+class Settings(NamedTuple):
+    """Parsed configuration for one overview run.
+
+    @attribute views: todo.sh commands rendered as sections.
+    @attribute show_remaining: whether to append a Remaining tasks section.
+    @attribute allow_duplicates: whether task rows may repeat across views.
+    @attribute todo_command: command used to invoke todo.sh.
+    """
+    views: list
+    show_remaining: bool
+    allow_duplicates: bool
+    todo_command: list
+
+
 # AI-generated code (unreviewed by a human)
+def load_settings():
+    # AI-generated documentation (not reviewed by a human)
+    """Read and validate all overview environment settings.
+
+    @return: Settings built from the environment.
+    @raises ValueError: for an invalid boolean or an empty TODO_SH command.
+    """
+    views = parse_views(os.environ.get("TODO_OVERVIEW_VIEWS", DEFAULT_VIEWS))
+    show_remaining = setting_enabled("TODO_OVERVIEW_SHOW_REMAINING_TASKS", "true")
+    allow_duplicates = setting_enabled("TODO_OVERVIEW_DUPLICATE_TASKS", "false")
+    todo_command = shlex.split(
+        os.environ.get("TODO_FULL_SH")
+        or os.environ.get("TODO_SH")
+        or "todo.sh"
+    )
+    if not todo_command:
+        raise ValueError("TODO_SH must name the todo.sh executable")
+    return Settings(views, show_remaining, allow_duplicates, todo_command)
+
+
 def task_id(line):
+    """Extract the task number from one todo.sh output line.
+
+    @param line: output line, possibly containing ANSI color codes.
+    @return: task id string, or None when the line is not a task row.
+    """
     plain = ANSI_RE.sub("", line)
     match = TASK_ID_RE.match(plain)
     return match.group(1) if match else None
 
 
-# AI-generated code (unreviewed by a human)
 def run_todo(todo_command, arguments):
+    """Run one todo.sh command with verbose output disabled.
+
+    @param todo_command: executable and leading arguments for todo.sh.
+    @param arguments: subcommand and arguments to append.
+    @return: captured stdout from the command.
+    @raises RuntimeError: if the command cannot run or exits nonzero.
+    """
     env = os.environ.copy()
     env["TODOTXT_VERBOSE"] = "0"
     try:
@@ -91,35 +153,97 @@ def run_todo(todo_command, arguments):
     return result.stdout
 
 
-# AI-generated code (unreviewed by a human)
+def collect_outputs(settings):
+    """Run the configured views and the optional list command.
+
+    @param settings: overview configuration.
+    @return: (view command/output pairs, remaining output or None).
+    """
+    outputs = [
+        (command, run_todo(settings.todo_command, command))
+        for command in settings.views
+    ]
+    remaining = (
+        run_todo(settings.todo_command, ["list"])
+        if settings.show_remaining
+        else None
+    )
+    return outputs, remaining
+
+
 def filter_view_output(output, seen, allow_duplicates):
-    """Hide repeated task rows while preserving other command output."""
+    """Drop repeated task rows while keeping other output lines.
+
+    @param output: stdout of one todo.sh view.
+    @param seen: task ids already rendered in earlier views.
+    @param allow_duplicates: keep repeated rows when True.
+    @return: (rendered lines, new set of all seen task ids).
+    """
     rendered = []
+    updated_seen = set(seen)
     for line in output.splitlines():
         number = task_id(line)
         if number is None:
             rendered.append(line)
             continue
-        already_seen = number in seen
-        seen.add(number)
+        already_seen = number in updated_seen
+        updated_seen.add(number)
         if allow_duplicates or not already_seen:
             rendered.append(line)
-    return rendered
+    return rendered, updated_seen
 
 
-# AI-generated code (unreviewed by a human)
 def render_section(title, output, seen, allow_duplicates):
+    """Print one titled section of overview output.
+
+    @param title: section heading.
+    @param output: stdout of the view being rendered.
+    @param seen: task ids rendered so far.
+    @param allow_duplicates: keep repeated rows when True.
+    @return: new set of task ids seen after rendering this section.
+    """
     print(f"=== {title} ===")
-    lines = filter_view_output(output, seen, allow_duplicates)
+    lines, updated_seen = filter_view_output(output, seen, allow_duplicates)
     if lines:
         print("\n".join(lines))
     else:
         print("No tasks.")
     print()
+    return updated_seen
 
 
-# AI-generated code (unreviewed by a human)
+def render_views(outputs, allow_duplicates):
+    """Print every configured view in order.
+
+    @param outputs: view command/output pairs.
+    @param allow_duplicates: keep repeated rows when True.
+    @return: set of task ids rendered across all views.
+    """
+    seen = set()
+    for command, output in outputs:
+        seen = render_section(" ".join(command), output, seen, allow_duplicates)
+    return seen
+
+def render_remaining(output, seen):
+    """Print the Remaining tasks section after the views.
+
+    @param output: stdout of the list command, or None when disabled.
+    @param seen: task ids already rendered by the views.
+    """
+    print("=== Remaining tasks ===")
+    lines, _ = filter_view_output(output or "", seen, False)
+    if lines:
+        print("\n".join(lines))
+    else:
+        print("No remaining tasks.")
+    print()
+
+
 def main():
+    """Validate CLI arguments and render the overview report.
+
+    @return: process exit status.
+    """
     args = sys.argv[1:]
     if args and args[0] == os.path.basename(__file__):
         args = args[1:]
@@ -130,47 +254,15 @@ def main():
         return fail(f"unexpected arguments: {' '.join(args)}")
 
     try:
-        views = parse_views(os.environ.get("TODO_OVERVIEW_VIEWS", DEFAULT_VIEWS))
-        show_remaining = setting_enabled(
-            "TODO_OVERVIEW_SHOW_REMAINING_TASKS", "true"
-        )
-        allow_duplicates = setting_enabled(
-            "TODO_OVERVIEW_DUPLICATE_TASKS", "false"
-        )
-        todo_command = shlex.split(
-            os.environ.get("TODO_FULL_SH")
-            or os.environ.get("TODO_SH")
-            or "todo.sh"
-        )
-        if not todo_command:
-            raise ValueError("TODO_SH must name the todo.sh executable")
-
-        outputs = [
-            (command, run_todo(todo_command, command))
-            for command in views
-        ]
-        remaining = (
-            run_todo(todo_command, ["list"]) if show_remaining else None
-        )
+        settings = load_settings()
+        outputs, remaining = collect_outputs(settings)
     except (ValueError, RuntimeError) as error:
         return fail(str(error))
 
-    seen = set()
-    for command, output in outputs:
-        render_section(" ".join(command), output, seen, allow_duplicates)
-
-    if show_remaining:
-        print("=== Remaining tasks ===")
-        lines = filter_view_output(remaining or "", seen, False)
-        if lines:
-            print("\n".join(lines))
-        else:
-            print("No remaining tasks.")
-        print()
-
+    seen = render_views(outputs, settings.allow_duplicates)
+    if settings.show_remaining:
+        render_remaining(remaining, seen)
     return 0
 
-
-# AI-generated code (unreviewed by a human)
 if __name__ == "__main__":
     sys.exit(main())

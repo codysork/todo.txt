@@ -12,7 +12,8 @@
 >
 > Keep each marker until a human has reviewed the content; do not put markers
 > only at file level. Use `# ...` in Bash/Python/config and `<!-- ... -->`
-> in Markdown.
+> in Markdown. In Python, place the code marker above the `def`/`class` and the
+> documentation marker above its docstring when both are generated.
 
 **1. Always find the root cause of a problem.**
 **2. Keep it simple stupid; reduce complexity as much as possible.**
@@ -127,6 +128,10 @@ Bash actions and `config` carry a metadata block:
   `#!/usr/bin/env python3` shebang. Python filters use a module docstring
   instead of the `@` block and follow the tab-indented style of
   `filters/futureTasks`.
+- Python functions and classes carry docstrings in the `overview` style: a
+  one-line summary for simple functions, or a summary plus `@param`, `@return`,
+  `@raises`, and `@attribute` tags for complex ones. Place the docstring
+  immediately after the `def`/`class` line.
 
 ## Shell conventions
 
@@ -142,7 +147,8 @@ Bash actions and `config` carry a metadata block:
   input (`pace`, `routine`).
 - Section banners separate `Configuration`, `Constants`, `Helper Functions`,
   `Rendering Functions`, and `Main`. Match the neighboring banner style:
-  `#----...` (pace) or `#====` with `#----` subsections (kanban).
+  `#----...` (pace), `#====` with `#----` subsections (kanban), or full-width
+  `#-----...-----#` banners with a centered label (Python `overview`).
 - Function syntax varies: `function name { ... }` in `repeat`, `routine`,
   `schedule`; `name() { ... }` in `pace`, `kanban`. Stay consistent within a
   file.
@@ -165,6 +171,18 @@ Bash actions and `config` carry a metadata block:
   first: `gsub(/\033\[[0-9;]*m/, "", plain)` (see `routine`).
 - Usage text mimics todo.sh: two-space indent for the action name, four spaces
   for descriptions/examples, `$ $TODO_SH ...` examples.
+
+## Python conventions
+
+- Group configuration in a small value object such as `Settings(NamedTuple)`
+  and pass it to helpers instead of long argument lists (`overview`).
+- Keep functions focused and side-effect free: return updated state rather than
+  mutating shared collections. For example, `filter_view_output` returns the
+  rendered lines and an updated `seen` set.
+- Use full-width `#-----...-----#` section banners with centered labels
+  (`Constants`, `Functions`) in Python actions; keep two blank lines between
+  top-level definitions.
+- Keep top-level code to `if __name__ == "__main__": sys.exit(main())`.
 
 ## Task data model
 

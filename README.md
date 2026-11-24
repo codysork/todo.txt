@@ -78,9 +78,11 @@ operations display their affected tasks and ask for one confirmation before
 making changes. Removing schedules with `todo.sh schedule R rm` includes
 future schedules regardless of the setting.
 
+<!-- AI-generated documentation (not reviewed by a human) -->
 `overview` uses `TODO_OVERVIEW_VIEWS` as an ordered, comma-separated list of
 todo.sh commands. The config runs `ls @Routine:daily`, `today`, `ls due`, and
-`schedule`. A bare `routine` entry is expanded to `routine show all`. By
+`schedule`. Each entry is run as written, so a routine view must name its
+subcommand explicitly (for example `routine show all`). By
 default, repeated task numbers are suppressed
 (`TODO_OVERVIEW_DUPLICATE_TASKS=false`) and active tasks not shown by a view are
 added at the end (`TODO_OVERVIEW_SHOW_REMAINING_TASKS=true`).

@@ -23,8 +23,9 @@ def test_parse_views_preserves_order_and_arguments():
     ]
 
 
-def test_bare_routine_expands_to_show_all():
-    assert overview.parse_views("routine") == [["routine", "show", "all"]]
+# AI-generated code (unreviewed by a human)
+def test_routine_view_keeps_its_explicit_arguments():
+    assert overview.parse_views("routine show all") == [["routine", "show", "all"]]
 
 
 def test_parse_views_ignores_empty_entries():
@@ -38,18 +39,19 @@ def test_task_id_works_with_ansi_coloring():
     assert overview.task_id("\033[1;32m12\033[0m (A) task +Project") == "12"
 
 
+# AI-generated code (unreviewed by a human)
 def test_filter_suppresses_repeats_but_preserves_non_task_output():
-    seen = {"2"}
-    lines = overview.filter_view_output(
+    lines, _ = overview.filter_view_output(
         "No routine tasks.\n1 (A) first\n2 second\n1 duplicate\n",
-        seen,
+        {"2"},
         allow_duplicates=False,
     )
     assert lines == ["No routine tasks.", "1 (A) first"]
 
 
+# AI-generated code (unreviewed by a human)
 def test_filter_allows_cross_view_duplicates_when_enabled():
-    lines = overview.filter_view_output(
+    lines, _ = overview.filter_view_output(
         "4 task", {"4"}, allow_duplicates=True
     )
     assert lines == ["4 task"]
