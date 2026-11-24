@@ -9,14 +9,12 @@
 # Usage:
 #   todo.sh pace [daily|weekly|monthly|annual] [count]
 
-# AI-generated code (unreviewed by a human)
 set -euo pipefail
 
 #----------------------------------------------------------------------------
 # Configuration
 #----------------------------------------------------------------------------
 
-# AI-generated code (unreviewed by a human)
 DONE_FILE="${DONE_FILE:-${TODO_DIR:-$HOME}/done.txt}"
 TODAY=$(date +%Y-%m-%d)
 
@@ -24,14 +22,11 @@ TODAY=$(date +%Y-%m-%d)
 # Functions
 #----------------------------------------------------------------------------
 
-# AI-generated code (unreviewed by a human)
 usage() {
     echo "Usage: todo.sh pace [daily|weekly|monthly|annual] [count]"
 }
 
-# AI-generated code (unreviewed by a human)
 # Sum a score field completed within a date range.
-# AI-generated code (unreviewed by a human)
 sum_points() {
     local field="$1"
     local start="$2"
@@ -53,7 +48,6 @@ sum_points() {
 }
 
 # Calculate inclusive calendar days between two dates.
-# AI-generated code (unreviewed by a human)
 days_between() {
     local start="$1"
     local end="$2"
@@ -65,7 +59,6 @@ days_between() {
 }
 
 # Print report header.
-# AI-generated code (unreviewed by a human)
 print_header() {
     echo
     printf '%-16s %6s %10s %12s %10s %12s %10s %12s\n' \
@@ -77,7 +70,6 @@ print_header() {
 }
 
 # Generate a report row.
-# AI-generated code (unreviewed by a human)
 report_period() {
     local label="$1"
     local start="$2"
@@ -107,69 +99,53 @@ report_period() {
         "$mental" "$mental_per_day" "$stress" "$stress_per_day"
 }
 
-# AI-generated code (unreviewed by a human)
-report_mode() {
+clamp_to_today() {
+    local end="$1"
+    if [[ "$end" > "$TODAY" ]]; then
+        echo "$TODAY"
+    else
+        echo "$end"
+    fi
+}
+
+report_range() {
+    local anchor="$1"
+    local step="$2"
+    local end_offset="$3"
+    local label_format="$4"
     local index
     local start
     local end
     local label
+
+    for ((index = COUNT - 1; index >= 0; index--)); do
+        start=$(date -d "$anchor - $index $step" +%Y-%m-%d)
+        end=$(clamp_to_today "$(date -d "$start + $end_offset" +%Y-%m-%d)")
+        label=$(date -d "$start" "$label_format")
+        report_period "$label" "$start" "$end"
+    done
+}
+
+report_mode() {
+    local anchor
     local day_of_week
-    local current_week
-    local current_month
-    local next_month
-    local current_year
-    local next_year
 
     case "$MODE" in
         day|daily)
-            for ((index = COUNT - 1; index >= 0; index--)); do
-                start=$(date -d "$TODAY - $index days" +%Y-%m-%d)
-                label=$(date -d "$start" '+%Y-%m-%d')
-                report_period "$label" "$start" "$start"
-            done
+            report_range "$TODAY" days "0 days" '+%Y-%m-%d'
             ;;
-
         week|weekly)
             day_of_week=$(date -d "$TODAY" +%u)
-            current_week=$(date -d "$TODAY - $((day_of_week - 1)) days" +%Y-%m-%d)
-
-            for ((index = COUNT - 1; index >= 0; index--)); do
-                start=$(date -d "$current_week - $index weeks" +%Y-%m-%d)
-                end=$(date -d "$start + 6 days" +%Y-%m-%d)
-                if [[ "$end" > "$TODAY" ]]; then
-                    end=$TODAY
-                fi
-                label=$(date -d "$start" '+%G-W%V')
-                report_period "$label" "$start" "$end"
-            done
+            anchor=$(date -d "$TODAY - $((day_of_week - 1)) days" +%Y-%m-%d)
+            report_range "$anchor" weeks "6 days" '+%G-W%V'
             ;;
-
         month|monthly)
-            current_month=$(date -d "$TODAY" +%Y-%m-01)
-            for ((index = COUNT - 1; index >= 0; index--)); do
-                start=$(date -d "$current_month - $index months" +%Y-%m-%d)
-                next_month=$(date -d "$start + 1 month" +%Y-%m-%d)
-                end=$(date -d "$next_month - 1 day" +%Y-%m-%d)
-                if [[ "$end" > "$TODAY" ]]; then
-                    end=$TODAY
-                fi
-                label=$(date -d "$start" '+%b %Y')
-                report_period "$label" "$start" "$end"
-            done
+            anchor=$(date -d "$TODAY" +%Y-%m-01)
+            report_range "$anchor" months "1 month - 1 day" '+%b %Y'
             ;;
-
         annual|year|yearly)
-            current_year=$(date -d "$TODAY" +%Y-01-01)
-            for ((index = COUNT - 1; index >= 0; index--)); do
-                start=$(date -d "$current_year - $index years" +%Y-%m-%d)
-                next_year=$(date -d "$start + 1 year" +%Y-%m-%d)
-                end=$(date -d "$next_year - 1 day" +%Y-%m-%d)
-                if [[ "$end" > "$TODAY" ]]; then
-                    end=$TODAY
-                fi
-                label=$(date -d "$start" '+%Y')
-                report_period "$label" "$start" "$end"
-            done
+            anchor=$(date -d "$TODAY" +%Y-01-01)
+            report_range "$anchor" years "1 year - 1 day" '+%Y'
             ;;
     esac
 }
@@ -178,7 +154,6 @@ report_mode() {
 # Main
 #----------------------------------------------------------------------------
 
-# AI-generated code (unreviewed by a human)
 # Validate arguments.
 MODE="${2:-monthly}"
 COUNT="${3:-}"
@@ -230,7 +205,6 @@ if [[ ! -f "$DONE_FILE" || ! -r "$DONE_FILE" ]]; then
     exit 1
 fi
 
-# AI-generated code (unreviewed by a human)
 print_header
 report_mode
 
