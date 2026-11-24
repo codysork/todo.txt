@@ -7,7 +7,7 @@ A collection of configuration, add-ons, and filters for [todo.txt-cli](https://g
 - **Threshold scheduling:** Set a `t:` date to keep a task hidden until it is ready to appear. Tasks with future thresholds are hidden from the normal list and can be shown with `todo.sh -x`.
 - **Recurring routines:** Tag tasks with a frequency such as `@Routine:weekly` and set their next threshold.
 - **Task overview:** Combine configured todo.sh views, suppress duplicates, and optionally show tasks not covered by those views.
-- **Completion tracking:** `pace` reports completed effort points over time; `predict pace` estimates the probability of maintaining a target pace.
+- **Completion tracking:** `pace` reports physical, mental, and stress scores together in one table; `predict KEY` reports statistics for a selected numeric task-metadata field.
 - **Task management:** Add tasks through a desktop dialog with `popup`, repeat completed tasks with `repeat`, and view due tasks with `today`.
 - **Kanban groundwork:** `kanban` defines board contexts and computes layout dimensions, but does not yet retrieve tasks or draw the board.
 
@@ -61,8 +61,8 @@ chain and is returned to the action.
 | `todo.sh routine show <frequency>\|all` | Lists routine tasks |
 | `todo.sh overview` | Displays the configured task views, suppresses repeated task numbers by default, and shows remaining active tasks by default |
 | `todo.sh repeat ITEM [DATE\|DAY]` | Completes and re-adds a task, optionally rescheduling its threshold |
-| `todo.sh pace [daily\|weekly\|monthly\|annual] [count]` | Reports completed effort points per day for each period |
-| `todo.sh predict pace [pace]` | Estimates the probability that total effort meets the target average pace over each calendar period; historical samples include only days with valid effort entries |
+| `todo.sh pace [daily\|weekly\|monthly\|annual] [count]` | Reports physical, mental, and stress totals and daily rates together in one table |
+| `todo.sh predict KEY [value]` | Reports statistics for a numeric metadata key and its probability of meeting a target daily average (default: historical mean) |
 | `todo.sh popup` | Opens a dialog to add a task |
 | `todo.sh kanban` | Kanban scaffold with configured contexts and layout calculations; task retrieval and board rendering are not implemented yet |
 
@@ -90,29 +90,27 @@ given, then runs `after_add` hooks with the original and new task numbers.
 The configured schedule hooks validate the date before the repeat and apply
 the threshold to the new task afterwards.
 
-### How `predict pace` estimates probabilities
+### How `predict KEY` summarizes task metadata
 
-`predict pace [pace]` reads completed tasks with valid `effort:` values from
-`done.txt`, sums effort recorded on the same date, and uses those daily totals
-as its historical observations. If no pace is supplied, the target is the
-historical mean effort per observation. Future-dated completions and completed
-dates without valid effort entries are excluded.
+`predict KEY [value]` selects one exact numeric `key:value` field from completed tasks
+in `done.txt`. Values for other keys are kept separate. Completed records must
+have a valid date on or before today; numeric values for the selected key are
+aggregated by completion date. Metadata with nonnumeric date or text values is
+skipped. Malformed numeric values, duplicate occurrences of the selected key
+on one task line, NaN, and infinity are reported as errors. A key with no valid
+observations reports no data rather than fabricated zero statistics.
 
-The prediction uses a moving-block bootstrap: it repeatedly builds simulated
-sequences by sampling historical observations in consecutive blocks of up to
-seven entries. For each sequence, it checks whether cumulative effort by the
-end of each period is at least the target pace multiplied by the period's
-calendar days. The Day result is a one-observation check; Week, Month, and Year
-results ask whether the average over the whole period meets the target. They
-do not require meeting the target every day, so higher-effort days can offset
-lower-effort days.
+An optional second argument sets the target daily average; without it the
+historical mean is used. The bootstrap probability is the chance that the total
+over each period reaches that target, so `predict effort 3.5` checks maintaining
+an average of 3.5 effort/day.
 
-The reported percentages are estimates from 20,000 simulations. The displayed
-Monte Carlo error describes simulation sampling noise, not uncertainty about
-future productivity. A limitation is that dates without valid effort entries
-are omitted rather than treated as zero-effort days, so sampled observations
-are not necessarily consecutive calendar days even though period targets use
-calendar-day counts.
+The report includes the selected key's average, median, population deviation,
+zero frequency, and number of observation days. It also retains the moving-block
+bootstrap forecast over calendar periods, using the historical mean as its
+default target pace. The bootstrap samples daily observations in contiguous
+blocks of up to seven entries; dates with no valid selected-key observation are
+not inserted as zero-effort days.
 
 ## Task conventions
 
@@ -120,7 +118,8 @@ Tasks use todo.txt conventions: priorities such as `(A)`, project tags such as `
 
 - `t:YYYY-MM-DD` for a threshold date
 - `due:YYYY-MM-DD` for a due date
-- `effort:` for decimal scoring values
+- `physical:`, `mental:`, and `stress:` for the separate `pace` score totals
+- numeric `key:value` fields such as `physical:`, `mental:`, `stress:`, and `effort:` for `pace` and `predict KEY`
 - `@Routine:<frequency>` for a routine frequency: `daily`, `weekly`, `monthly`, `quarterly`, `yearly`, or `irregular`
 
 The configuration sorts tasks by threshold date, with undated tasks first. Its final filter hides tasks whose threshold is in the future. Use `todo.sh -x` to show those tasks.
