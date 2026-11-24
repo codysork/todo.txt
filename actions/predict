@@ -220,7 +220,6 @@ def bootstrap_days(daily, days, block_size, rng):
             yield daily[(start + offset) % n]
         remaining -= take
 
-# AI-generated code (unreviewed by a human)
 def simulate_probabilities(daily, horizons, pace, simulations, rng):
     """Estimate average-pace probabilities on shared simulated paths."""
     horizons = sorted(set(horizons))
@@ -228,9 +227,9 @@ def simulate_probabilities(daily, horizons, pace, simulations, rng):
     successes = dict.fromkeys(horizons, 0)
 
     for _ in range(simulations):
-        path = bootstrap_days(daily, horizons[-1], block_size, rng)
+        one_sim_future_set = bootstrap_days(daily, horizons[-1], block_size, rng)
         total = 0.0
-        for day, value in enumerate(path, start=1):
+        for day, value in enumerate(one_sim_future_set, start=1):
             total += value
             if day in successes and total >= pace * day:
                 successes[day] += 1
@@ -269,11 +268,7 @@ def print_report(history, pace):
     print(f"Historical median:  {history.median:.2f} {history.key}/day")
     print(f"Daily deviation:    {history.stdev:.2f} {history.key}/day")
     print(f"Zero-value frequency: {history.zero_frequency * 100:5.1f}%")
-    # AI-generated code (unreviewed by a human)
-    if history.key == "effort":
-        print(f"Effort-entry days:  {history.span}")
-    else:
-        print(f"Observation days:   {history.span}")
+    print(f"Observation days:   {history.span}")
     print(f"Simulations:        {SIMULATIONS:,}")
     print(f"Block size:         {min(BLOCK_DAYS, history.span)} days")
     print()
