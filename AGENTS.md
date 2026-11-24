@@ -1,14 +1,26 @@
 # AGENTS.md
 
-> ## 🚨 REQUIRED — READ BEFORE ANY CODE CHANGE
+> ## 🚨 REQUIRED — READ BEFORE ANY CHANGE (CODE OR TEXT)
 >
 > **Every AI-generated function or code block—including tests—MUST have a
 > comment immediately above it that says exactly: `AI-generated code
 > (unreviewed by a human)`.**
 >
-> **Do not put this marker only at file level. Keep it until a human has
-> reviewed that code.** Use the language's comment syntax (for example,
-> `# AI-generated code (unreviewed by a human)` in Bash and Python).
+> **Every AI-generated or agent-edited block of text—including documentation
+> and this file—MUST have a comment immediately above it that says exactly:
+> `AI-generated documentation (not reviewed by a human)`.**
+>
+> Keep each marker until a human has reviewed the content; do not put markers
+> only at file level. Use `# ...` in Bash/Python/config and `<!-- ... -->`
+> in Markdown.
+
+**1. Always find the root cause of a problem.**
+**2. Keep it simple stupid; reduce complexity as much as possible.**
+**3. Work directly on the current branch, `master`; don't create new branches unless you ask.**
+**4. Don't push, merge or open pull requests without asking first.**
+**5. Verify your changes: run `pytest` from `~/.todo` and smoke-check todo.sh behavior manually.**
+**6. Commit messages: short and past-tense; keep the subject to one line where possible.**
+**7. Leave the campground cleaner than you found it.**
 
 Scope: `~/.todo` — configuration, custom actions, and output filters for
 [todo.txt-cli](https://github.com/todotxt/todo.txt-cli) (`/usr/bin/todo.sh`).
@@ -57,19 +69,22 @@ Adapted from [Clean Code standards](https://gist.githubusercontent.com/wojteklu/
 | `hooks/` | Configured executable add-on hooks, organized by action and event |
 | `lib/` | Shared helper scripts used by add-ons |
 | `filters/` | Executable stdin→stdout filters (currently `futureTasks`, wired via `TODOTXT_FINAL_FILTER`) |
+| `tests/` | Pytest suite and executable specifications |
 
-Current actions: `kanban`, `pace`, `popup`, `repeat`, `routine`, `schedule`,
-`today`.
+Current actions: `kanban`, `overview`, `pace`, `popup`, `predict`, `repeat`,
+`routine`, `schedule`, `today`.
 
 ## Runtime model
 
 - todo.sh finds `~/.todo/config` automatically (also `-d CONFIG_FILE` /
   `TODOTXT_CFG_FILE`), sources it, exports environment, then dispatches.
 - Executable files in `actions/` are invoked as
-  `"$TODO_ACTIONS_DIR/<name>" "$@"`. **`$1` is the action name**, so scripts
-  start with `action=$1; shift` (see `pace`, `repeat`, `schedule`).
-  `routine` and `popup` also tolerate being run directly by stripping `$1`
-  when it matches the script name.
+  `"$TODO_ACTIONS_DIR/<name>" "$@"`. **`$1` is the action name**, so Bash
+  scripts typically start with `action=$1; shift` (see `kanban`, `repeat`,
+  `schedule`, `routine`, `today`). `pace` reads its mode from `$2` instead;
+  Python actions (`overview`, `predict`) strip a leading action-name argument
+  themselves. `routine` and `popup` also tolerate being run directly by
+  stripping `$1` when it matches the script name.
 - todo.sh calls every add-on with a single `usage` argument to build
   `todo.sh help`, `shorthelp`, and `listaddons` output. Every action must
   handle `usage` (and ideally `help`, `-h`, `--help`) by printing indented help
@@ -108,8 +123,10 @@ Bash actions and `config` carry a metadata block:
   `@purpose` (both appear), and bump `@modified` on substantive edits.
 - New scripts use `#!/usr/bin/env bash`; older files use `#!/bin/bash` to match
   the file you are editing rather than churning shebangs.
-- Python filters use a module docstring instead of the `@` block and follow the
-  tab-indented style of `filters/futureTasks`.
+- Python actions (`overview`, `predict`) keep the `@` block with a
+  `#!/usr/bin/env python3` shebang. Python filters use a module docstring
+  instead of the `@` block and follow the tab-indented style of
+  `filters/futureTasks`.
 
 ## Shell conventions
 
@@ -167,7 +184,11 @@ Bash actions and `config` carry a metadata block:
 ## Config and filter conventions
 
 - `config` uses `export`, `# === SECTION ===` banners, commented-out defaults
-  copied from todo.sh, and an absolute `TODO_DIR`.
+  copied from todo.sh, and an absolute `TODO_DIR`. Plugin settings live under
+  a `# === PLUGIN SETTINGS ===` banner (`TODO_OVERVIEW_VIEWS`,
+  `TODO_OVERVIEW_DUPLICATE_TASKS`, `TODO_OVERVIEW_SHOW_REMAINING_TASKS`,
+  `TODO_SCHEDULE_PRIORITY_RESCHEDULE_ALL`). `TODOTXT_DEFAULT_ACTION` is
+  `overview`.
 - Filters are executable, read stdin, write stdout, preserve line content
   (colors included), and must be safe per line. `futureTasks` uses tab
   indentation, a regex module constant, and `main(args=None) -> bool` with
@@ -188,12 +209,16 @@ todo.sh help <name>
 todo.sh shorthelp
 todo.sh listaddons
 
+# Test suite (from ~/.todo; uses scratch data, never real task files)
+pytest
+
 # Exercise against a scratch config so real tasks are untouched
 todo.sh -d /tmp/todo-test.cfg <name> ...
 ```
 
-There is no automated test suite. Verify behavior manually, including direct
-invocation (`./actions/<name> <name> ...`) and invocation through `todo.sh`.
-Keep actions executable (`chmod +x`). Do not commit generated files or task
-data; commit messages in this repo are short and past tense
-("Added ...", "Adjusted ...", "Fixed ...").
+`pytest` covers the add-ons and hook runner. Also verify manually: confirm shell
+edits parse with `bash -n`, then smoke-check changed actions through `todo.sh`
+and direct invocation (`./actions/<name> <name> ...`). Keep actions executable
+(`chmod +x`). Do not commit generated files or task data; commit messages in
+this repo are short and past tense ("Added ...", "Adjusted ...", "Fixed ...").
+
