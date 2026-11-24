@@ -3,7 +3,7 @@
 # @file pace (todo.sh action)
 # @author Cody Sork <codysork@gmail.com> with help from ChatGPT
 # @created 2026-11-04
-# @modified 2026-11-23
+# @modified 2026-11-24
 # @description Calculate physical, mental, and stress effort velocity.
 #
 # Usage:
@@ -22,11 +22,18 @@ TODAY=$(date +%Y-%m-%d)
 # Functions
 #----------------------------------------------------------------------------
 
+# AI-generated documentation (not reviewed by a human)
+# @description Print the pace command's usage line.
 usage() {
     echo "Usage: todo.sh pace [daily|weekly|monthly|annual] [count]"
 }
 
-# Sum a score field completed within a date range.
+# AI-generated documentation (not reviewed by a human)
+# @description Sum one score field from completions in a date range.
+# @param field: metadata key to sum (physical, mental, or stress).
+# @param start: first completion date, inclusive.
+# @param end: last completion date, inclusive.
+# @return: formatted two-decimal sum printed to stdout.
 sum_points() {
     local field="$1"
     local start="$2"
@@ -47,7 +54,11 @@ sum_points() {
     ' "$DONE_FILE"
 }
 
-# Calculate inclusive calendar days between two dates.
+# AI-generated documentation (not reviewed by a human)
+# @description Count calendar days between two dates, inclusive.
+# @param start: first ISO date.
+# @param end: last ISO date.
+# @return: inclusive day count printed to stdout.
 days_between() {
     local start="$1"
     local end="$2"
@@ -58,7 +69,8 @@ days_between() {
     ) / 86400 + 1 ))
 }
 
-# Print report header.
+# AI-generated documentation (not reviewed by a human)
+# @description Print the report's column headings.
 print_header() {
     echo
     printf '%-16s %6s %10s %12s %10s %12s %10s %12s\n' \
@@ -69,7 +81,11 @@ print_header() {
         "----------" "------------" "----------" "------------"
 }
 
-# Generate a report row.
+# AI-generated documentation (not reviewed by a human)
+# @description Print one report row with totals and per-day velocities.
+# @param label: period label shown in the first column.
+# @param start: first date of the period.
+# @param end: last date of the period.
 report_period() {
     local label="$1"
     local start="$2"
@@ -99,6 +115,10 @@ report_period() {
         "$mental" "$mental_per_day" "$stress" "$stress_per_day"
 }
 
+# AI-generated documentation (not reviewed by a human)
+# @description Limit a period end date to today.
+# @param end: candidate end date as an ISO string.
+# @return: today when end is in the future, otherwise end.
 clamp_to_today() {
     local end="$1"
     if [[ "$end" > "$TODAY" ]]; then
@@ -108,6 +128,12 @@ clamp_to_today() {
     fi
 }
 
+# AI-generated documentation (not reviewed by a human)
+# @description Print a range of periods for one configured mode.
+# @param anchor: date from which period starts are counted backwards.
+# @param step: date unit for each backward step (days, weeks, months, years).
+# @param end_offset: GNU date expression for the period end, e.g. "6 days".
+# @param label_format: date format used for each period label.
 report_range() {
     local anchor="$1"
     local step="$2"
@@ -126,6 +152,8 @@ report_range() {
     done
 }
 
+# AI-generated documentation (not reviewed by a human)
+# @description Dispatch to the range configuration for the selected MODE.
 report_mode() {
     local anchor
     local day_of_week
