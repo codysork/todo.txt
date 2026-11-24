@@ -62,7 +62,7 @@ chain and is returned to the action.
 | `todo.sh overview` | Displays the configured task views, suppresses repeated task numbers by default, and shows remaining active tasks by default |
 | `todo.sh repeat ITEM [DATE\|DAY]` | Completes and re-adds a task, optionally rescheduling its threshold |
 | `todo.sh pace [daily\|weekly\|monthly\|annual] [count]` | Reports physical, mental, and stress totals and daily rates together in one table |
-| `todo.sh predict KEY` | Reports historical statistics and bootstrap predictions for one numeric metadata key |
+| `todo.sh predict KEY [value]` | Reports statistics for a numeric metadata key and its probability of meeting a target daily average (default: historical mean) |
 | `todo.sh popup` | Opens a dialog to add a task |
 | `todo.sh kanban` | Kanban scaffold with configured contexts and layout calculations; task retrieval and board rendering are not implemented yet |
 
@@ -92,13 +92,18 @@ the threshold to the new task afterwards.
 
 ### How `predict KEY` summarizes task metadata
 
-`predict KEY` selects one exact numeric `key:value` field from completed tasks
+`predict KEY [value]` selects one exact numeric `key:value` field from completed tasks
 in `done.txt`. Values for other keys are kept separate. Completed records must
 have a valid date on or before today; numeric values for the selected key are
 aggregated by completion date. Metadata with nonnumeric date or text values is
 skipped. Malformed numeric values, duplicate occurrences of the selected key
 on one task line, NaN, and infinity are reported as errors. A key with no valid
 observations reports no data rather than fabricated zero statistics.
+
+An optional second argument sets the target daily average; without it the
+historical mean is used. The bootstrap probability is the chance that the total
+over each period reaches that target, so `predict effort 3.5` checks maintaining
+an average of 3.5 effort/day.
 
 The report includes the selected key's average, median, population deviation,
 zero frequency, and number of observation days. It also retains the moving-block

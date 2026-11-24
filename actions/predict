@@ -7,9 +7,10 @@
 # @description Report historical statistics for one numeric task metadata key.
 #
 # Usage:
-#   todo.sh predict KEY
+#   todo.sh predict KEY [value]
 #
 #   KEY        numeric key:value field to summarize (for example effort)
+#   value      target daily average to check (default: historical mean)
 #
 # Dependencies: Python standard library only.
 
@@ -58,10 +59,11 @@ def usage():
     print("  predict")
     print("    Report historical statistics for one numeric task metadata key.")
     print("      KEY        key to summarize, such as effort or physical-exertion")
+    print("      value      target daily average (default: historical mean)")
     print("      Examples:")
     print("        todo.sh predict effort")
-    print("        todo.sh predict physical-exertion")
-    print("        todo.sh predict pe")
+    print("        todo.sh predict effort 3.5")
+    print("        todo.sh predict physical-exertion 3.0")
 
 
 # AI-generated code (unreviewed by a human)
@@ -328,17 +330,32 @@ def print_report(history, pace):
 #----------------------------------------------------------------------------
 
 # AI-generated code (unreviewed by a human)
+def parse_target(value):
+    """Validate an optional target pace for the selected key."""
+    try:
+        target = float(value)
+    except ValueError:
+        fail(f"Target must be a number: {value}")
+    if math.isnan(target):
+        fail(f"Target must be a finite number: {value}")
+    if math.isinf(target):
+        fail(f"Target must be finite: {value}")
+    return target
+
+
+# AI-generated code (unreviewed by a human)
 def run_key_mode(args):
-    """Load and report one explicitly selected metadata key."""
-    if len(args) != 1:
-        fail("Usage: todo.sh predict KEY (exactly one metadata key is required).")
+    """Load a key, then report its statistics and optional target pace."""
+    if len(args) > 2:
+        fail("Usage: todo.sh predict KEY [value] (too many arguments).")
 
     key = args[0]
     if not METADATA_KEY_RE.fullmatch(key):
         fail(f"Invalid metadata key: {key}")
 
     history = parse_done(DONE_FILE, key)
-    print_report(history, history.mean)
+    target = parse_target(args[1]) if len(args) == 2 else history.mean
+    print_report(history, target)
 
 #----------------------------------------------------------------------------
 # Main
