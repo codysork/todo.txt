@@ -108,6 +108,10 @@ def load_predict():
 predict = load_predict()
 
 # AI-generated code (unreviewed by a human)
+DEFAULT_KEY = "effort"
+
+
+# AI-generated code (unreviewed by a human)
 def parse_history_raw(text=DONE_TEXT):
     with (
         patch.object(predict, "TODAY", TEST_DATE),
@@ -115,7 +119,7 @@ def parse_history_raw(text=DONE_TEXT):
         patch.object(predict.os.path, "isfile", return_value=True),
         patch.object(predict.os, "access", return_value=True),
     ):
-        return predict.parse_done("synthetic-done.txt")
+        return predict.parse_done("synthetic-done.txt", DEFAULT_KEY)
 
 
 # AI-generated code (unreviewed by a human)
@@ -138,9 +142,11 @@ def parse_error(text):
 
 # AI-generated code (unreviewed by a human)
 def simulate_uncached(daily, days, pace):
-    return predict.simulate_probability(
-        daily, days, pace, SIMULATIONS, random.Random(predict.RANDOM_SEED)
+    results = predict.simulate_probabilities(
+        daily, (days,), pace, SIMULATIONS,
+        random.Random(predict.RANDOM_SEED),
     )
+    return results[days]
 
 
 # AI-generated code (unreviewed by a human)
@@ -343,7 +349,7 @@ def test_history_without_valid_effort_is_rejected():
         except PredictFailure:
             pass
     assert fail.call_args.args == (
-        "No valid effort records found in done file: synthetic-done.txt",
+        "No data for key 'effort' in done file: synthetic-done.txt",
     )
 
 

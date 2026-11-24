@@ -114,86 +114,97 @@ class History(NamedTuple):
     def zero_frequency(self):
         return self.zero_days / self.span
 
-
-# AI-generated code (unreviewed by a human)
-def parse_done(path, key="effort"):
+def parse_done(path, key):
     """Parse one numeric metadata key and aggregate it by completion date."""
     if not METADATA_KEY_RE.fullmatch(key):
         fail(f"Invalid metadata key: {key}")
     if not os.path.isfile(path) or not os.access(path, os.R_OK):
         fail(f"Cannot read done file: {path}")
 
-    daily = {}
-    first = None
+    daily = read_daily_values(path, key)
+    if not daily:
+        fail(f"No data for key '{key}' in done file: {path}")
 
+    values = [daily[completed] for completed in sorted(daily)]
+    return History(values, min(daily), math.fsum(values), key)
+
+def read_daily_values(path, key):
+    """Return validated key values aggregated by completion date."""
+    daily = {}
     try:
         with open(path, encoding="utf-8") as f:
             for line_number, line in enumerate(f, start=1):
                 fields = line.split()
-                if len(fields) < 3 or fields[0] != "x":
+                completed = completion_date(fields)
+                if completed is None:
                     continue
 
-                try:
-                    completed = date.fromisoformat(fields[1])
-                except ValueError:
-                    continue
-                if completed > TODAY:
+                raw_value = find_key_value(fields, key, line_number, path)
+                if raw_value is None:
                     continue
 
-                values = [
-                    token.partition(":")[2]
-                    for token in fields[2:]
-                    if token.partition(":")[0] == key and ":" in token
-                ]
-                if len(values) > 1:
-                    fail(
-                        f"Duplicate key '{key}' on line {line_number} "
-                        f"in done file: {path}"
-                    )
-                if not values:
+                value = parse_number(raw_value, key, line_number)
+                if value is None:
                     continue
-
-                raw_value = values[0]
-                if DATE_VALUE_RE.fullmatch(raw_value):
-                    continue
-                try:
-                    value = float(raw_value)
-                except ValueError:
-                    if not raw_value or NUMERIC_LIKE_RE.match(raw_value):
-                        fail(
-                            f"Malformed numeric value for key '{key}' "
-                            f"on line {line_number}: {raw_value!r}"
-                        )
-                    continue
-
-                if math.isnan(value):
-                    fail(f"NaN value for key '{key}' on line {line_number}.")
-                if math.isinf(value):
-                    fail(f"Infinite value for key '{key}' on line {line_number}.")
-                if not NUMBER_RE.fullmatch(raw_value):
-                    fail(
-                        f"Malformed numeric value for key '{key}' "
-                        f"on line {line_number}: {raw_value!r}"
-                    )
 
                 daily[completed] = daily.get(completed, 0.0) + value
-                first = completed if first is None else min(first, completed)
     except OSError as error:
         fail(f"Cannot read done file: {error}")
+    return daily
 
-    if first is None:
-        if key == "effort":
-            fail(f"No valid effort records found in done file: {path}")
-        fail(f"No data for key '{key}' in done file: {path}")
+def completion_date(fields):
+    """Return a record's completion date, or None when it is unusable."""
+    if len(fields) < 3 or fields[0] != "x":
+        return None
+    try:
+        completed = date.fromisoformat(fields[1])
+    except ValueError:
+        return None
+    return completed if completed <= TODAY else None
 
-    values = [daily[completed] for completed in sorted(daily)]
-    return History(values, first, math.fsum(values), key)
+def find_key_value(fields, key, line_number, path):
+    """Return a key's raw value, rejecting a repeated key on one record."""
+    values = [
+        token.partition(":")[2]
+        for token in fields[2:]
+        if token.partition(":")[0] == key and ":" in token
+    ]
+    if len(values) > 1:
+        fail(
+            f"Duplicate key '{key}' on line {line_number} "
+            f"in done file: {path}"
+        )
+    return values[0] if values else None
+
+def parse_number(raw_value, key, line_number):
+    """Return a validated number, or None when the value is not numeric."""
+    if DATE_VALUE_RE.fullmatch(raw_value):
+        return None
+    try:
+        value = float(raw_value)
+    except ValueError:
+        if not raw_value or NUMERIC_LIKE_RE.match(raw_value):
+            fail(
+                f"Malformed numeric value for key '{key}' "
+                f"on line {line_number}: {raw_value!r}"
+            )
+        return None
+
+    if math.isnan(value):
+        fail(f"NaN value for key '{key}' on line {line_number}.")
+    if math.isinf(value):
+        fail(f"Infinite value for key '{key}' on line {line_number}.")
+    if not NUMBER_RE.fullmatch(raw_value):
+        fail(
+            f"Malformed numeric value for key '{key}' "
+            f"on line {line_number}: {raw_value!r}"
+        )
+    return value
 
 #----------------------------------------------------------------------------
 # Bootstrap prediction
 #----------------------------------------------------------------------------
 
-# AI-generated code (unreviewed by a human)
 def bootstrap_days(daily, days, block_size, rng):
     """Sample daily sequences in contiguous blocks with replacement.
 
@@ -209,13 +220,6 @@ def bootstrap_days(daily, days, block_size, rng):
             yield daily[(start + offset) % n]
         remaining -= take
 
-
-# AI-generated code (unreviewed by a human)
-def simulate_probability(daily, days, pace, simulations, rng):
-    """Return probability and MC error for meeting average pace over a period."""
-    return simulate_probabilities(daily, (days,), pace, simulations, rng)[days]
-
-
 # AI-generated code (unreviewed by a human)
 def simulate_probabilities(daily, horizons, pace, simulations, rng):
     """Estimate average-pace probabilities on shared simulated paths."""
@@ -226,8 +230,8 @@ def simulate_probabilities(daily, horizons, pace, simulations, rng):
     for _ in range(simulations):
         path = bootstrap_days(daily, horizons[-1], block_size, rng)
         total = 0.0
-        for day, effort in enumerate(path, start=1):
-            total += effort
+        for day, value in enumerate(path, start=1):
+            total += value
             if day in successes and total >= pace * day:
                 successes[day] += 1
 
@@ -244,7 +248,6 @@ def simulate_probabilities(daily, horizons, pace, simulations, rng):
 # Reporting
 #----------------------------------------------------------------------------
 
-# AI-generated code (unreviewed by a human)
 def print_report(history, pace):
     """
     Print historical statistics and simulated maintainability.
@@ -310,7 +313,6 @@ def print_report(history, pace):
 # Modes
 #----------------------------------------------------------------------------
 
-# AI-generated code (unreviewed by a human)
 def parse_target(value):
     """Validate an optional target pace for the selected key."""
     try:
@@ -323,9 +325,7 @@ def parse_target(value):
         fail(f"Target must be finite: {value}")
     return target
 
-
-# AI-generated code (unreviewed by a human)
-def run_key_mode(args):
+def run_key_statistics(args):
     """Load a key, then report its statistics and optional target pace."""
     if len(args) > 2:
         fail("Usage: todo.sh predict KEY [value] (too many arguments).")
@@ -342,7 +342,6 @@ def run_key_mode(args):
 # Main
 #----------------------------------------------------------------------------
 
-# AI-generated code (unreviewed by a human)
 def main():
     args = sys.argv[1:]
 
@@ -357,10 +356,8 @@ def main():
     if not args:
         fail("Usage: todo.sh predict KEY (name one numeric metadata key).")
 
-    run_key_mode(args)
+    run_key_statistics(args)
     return 0
 
-
-# AI-generated code (unreviewed by a human)
 if __name__ == "__main__":
     sys.exit(main())
