@@ -496,7 +496,7 @@ def test_report_is_reproducible():
 
 def test_report_describes_average_pace_and_recorded_days():
     text = report(1.0)
-    assert "Effort-entry days:  3" in text
+    assert "Observation days:   3" in text
     assert "Extra effort can compensate" in text
 
 
