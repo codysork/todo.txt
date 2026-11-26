@@ -102,9 +102,23 @@ export PRI_W=$LIGHT_GREY
 # TODOTXT_SORT_COMMAND will filter after line numbers are
 # inserted, but before colorization, and before hiding of
 # priority, context, and project.
-export TODOTXT_SORT_COMMAND='sort -s -k2,2 | sed -e "s/.* t:\([0-9-]\+\).*/\1 &/" -e t -e "s/^/0000-00-00 /" | sed -e "s/^[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} //" '
-#export TODOTXT_SORT_COMMAND='sed -e "s/.* t:\([0-9-]\+\).*/\1 &/" -e t -e "s/^/0000-00-00 /" | sort -k1 | sed -e "s/^[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} //"'
-
+export TODOTXT_SORT_COMMAND='
+  sed -e "s/^[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} //" |
+  awk '"'"'{
+    date = "9999-99-99"
+    for (i = 1; i <= NF; i++) {
+      if ($i ~ /^t:[0-9]{4}-[0-9]{2}-[0-9]{2}$/) {
+        date = substr($i, 3)
+        break
+      }
+    }
+    priority = $2
+    if (priority !~ /^\([A-Z]\)$/) priority = "~"
+    printf "%s\t%s\t%s\n", date, priority, $0
+  }'"'"' |
+  LC_ALL=C sort -s -t "$(printf "\t")" -k1,1 -k2,2 |
+  cut -f3-
+'
 
 # TODOTXT_FINAL_FILTER will filter list output after colorization,
 # priority hiding, context hiding, and project hiding. That is,
