@@ -1,0 +1,115 @@
+# AI-generated documentation (not reviewed by a human)
+spec_version: 1
+
+# AI-generated documentation (not reviewed by a human)
+id: routine
+
+# AI-generated documentation (not reviewed by a human)
+purpose: >-
+  Specify the routine action, which tags tasks with an @Routine frequency and
+  sets their next threshold through the schedule action, or lists active
+  routine tasks. The requirements reflect the action as currently implemented.
+
+# AI-generated documentation (not reviewed by a human)
+requirements:
+  # AI-generated documentation (not reviewed by a human)
+  - id: routine-usage
+    when: >-
+      The action is called with no subcommand, or with usage, help, -h, or
+      --help.
+    then: >-
+      Indented help for set and show is printed to stdout, including the valid
+      frequencies daily, weekly, monthly, quarterly, yearly, and irregular, and
+      the action exits successfully.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: routine-set-validation
+    when: >-
+      routine set is called with a frequency, a task number, and an optional
+      date or day.
+    then: >-
+      The frequency is lowercased and must match ^[a-z][a-z0-9_-]*$; the number
+      must be a positive decimal; the date defaults to today and must be
+      convertible by GNU date; the numbered task must exist and not start with
+      "x "; and an executable schedule action must be present. A failed check
+      prints "Routine: ..." on stderr and exits 1.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: routine-set-effect
+    when: >-
+      Validation succeeds for routine set.
+    then: >-
+      The task gains an (R) priority when it has no letter priority, every
+      existing @Routine:* tag is removed, and exactly one @Routine:<frequency>
+      tag is appended. The task is committed with todo.sh replace with verbose
+      output disabled, then todo.sh schedule assigns the requested threshold.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: routine-show
+    when: >-
+      routine show is called with a frequency or with all.
+    then: >-
+      The frequency is lowercased and validated, or "all" selects the @Routine:
+      prefix. todo.sh list is queried for that tag with verbose output disabled;
+      ANSI codes are stripped only for detecting completed lines, which are
+      omitted while the original formatted lines are preserved. An empty result
+      prints "No tasks in the <frequency> routine." or "No routine tasks."
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: routine-direct-invocation
+    when: >-
+      The script is executed directly with its own filename as the first
+      argument.
+    then: >-
+      That leading argument is discarded so set and show behave the same as
+      when todo.sh invokes the action.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: routine-unknown-subcommand
+    when: >-
+      A subcommand other than set, show, or a help alias is supplied.
+    then: >-
+      "Routine: unknown command '<subcommand>'" and usage are written to stderr
+      and the action exits 1.
+
+# AI-generated documentation (not reviewed by a human)
+acceptance:
+  # AI-generated documentation (not reviewed by a human)
+  - id: routine-set-adds-tag-priority-and-threshold
+    given: >-
+      Task 3 is the active line "water plants" with no priority.
+    when: >-
+      todo.sh routine set daily 3 tomorrow is run.
+    then: >-
+      Task 3 begins with (R), contains @Routine:daily, and has a t: field of
+      tomorrow.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: routine-set-replaces-existing-tag
+    given: >-
+      Task 1 contains @Routine:monthly and no other routine tag.
+    when: >-
+      todo.sh routine set weekly 1 is run.
+    then: >-
+      Task 1 contains @Routine:weekly and no @Routine:monthly tag, with the
+      threshold defaulting to today.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: routine-show-omits-completed
+    given: >-
+      The list contains an active @Routine:daily task and a completed
+      @Routine:weekly task.
+    when: >-
+      todo.sh routine show all is run.
+    then: >-
+      The active task is printed and the completed task is absent.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: routine-show-invalid-frequency
+    given: >-
+      No other state is required.
+    when: >-
+      todo.sh routine show bogus is run.
+    then: >-
+      "Routine: invalid frequency 'bogus'" is written to stderr and the exit
+      status is 1.

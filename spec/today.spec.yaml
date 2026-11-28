@@ -1,0 +1,70 @@
+# AI-generated documentation (not reviewed by a human)
+spec_version: 1
+
+# AI-generated documentation (not reviewed by a human)
+id: today
+
+# AI-generated documentation (not reviewed by a human)
+purpose: >-
+  Specify the today view, which reuses todo.sh's list rendering and final
+  filter and narrows the result to tasks whose threshold date has arrived or
+  passed. The behavior is taken from the action as currently implemented.
+
+# AI-generated documentation (not reviewed by a human)
+requirements:
+  # AI-generated documentation (not reviewed by a human)
+  - id: today-usage
+    when: >-
+      The action is invoked by todo.sh to build help output, which passes the
+      single argument usage.
+    then: >-
+      Indented help describing "today [TERM...]" and threshold-based selection
+      is printed to stdout and the action exits successfully without listing
+      tasks. Other help aliases are not handled by this action.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: today-threshold-cutoff
+    when: >-
+      The today action composes its post-filter command.
+    then: >-
+      It appends an awk filter that keeps only lines containing a
+      t:YYYY-MM-DD field whose date is lexically less than or equal to the
+      current date obtained from date +%Y-%m-%d.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: today-list-delegation
+    when: >-
+      todo.sh today is invoked with optional search terms.
+    then: >-
+      The action calls todo.sh's _list helper on TODO_FILE with those terms,
+      sets TODOTXT_VERBOSE=0 to suppress chatter, and prints the resulting text
+      only when it is non-empty.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: today-undated-excluded
+    when: >-
+      An active task has no t: threshold field.
+    then: >-
+      The task is not printed by today, because the awk filter requires a
+      threshold match.
+
+# AI-generated documentation (not reviewed by a human)
+acceptance:
+  # AI-generated documentation (not reviewed by a human)
+  - id: today-shows-due-and-overdue
+    given: >-
+      TODO_FILE has tasks with thresholds of yesterday, today, and tomorrow,
+      plus a task with no threshold.
+    when: >-
+      todo.sh today is run.
+    then: >-
+      Only the yesterday and today tasks are printed.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: today-no-matches-is-silent
+    given: >-
+      No task has a threshold on or before today.
+    when: >-
+      todo.sh today is run.
+    then: >-
+      The command exits successfully and prints no task rows.

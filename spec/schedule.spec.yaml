@@ -1,0 +1,145 @@
+# AI-generated documentation (not reviewed by a human)
+spec_version: 1
+
+# AI-generated documentation (not reviewed by a human)
+id: schedule
+
+# AI-generated documentation (not reviewed by a human)
+purpose: >-
+  Specify how the schedule action sets, moves, removes, and lists t: threshold
+  dates for individual tasks, explicit task selections, and whole priority
+  groups. The requirements describe the behavior present in the repository.
+
+# AI-generated documentation (not reviewed by a human)
+requirements:
+  # AI-generated documentation (not reviewed by a human)
+  - id: schedule-usage
+    when: >-
+      The action is invoked by todo.sh to build help output, which passes usage
+      as its first argument.
+    then: >-
+      Indented help is printed to stdout covering single items, item lists,
+      inclusive ranges, mv and rm operations, priority scheduling, the
+      reschedule-all setting, and examples, then the action exits successfully.
+      Other help aliases are not handled by this action.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: schedule-list-all
+    when: >-
+      schedule is invoked without an item argument.
+    then: >-
+      All scheduled tasks are printed by running todo.sh -x list and filtering
+      for lines containing a t: threshold in the accepted date-like form.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: schedule-date-validation
+    when: >-
+      A date parameter other than rm is supplied for a task, selection, or
+      priority group, optionally prefixed with "mv ".
+    then: >-
+      The prefix is stripped and GNU date -d must convert the value to %F; an
+      unconvertible value makes date's diagnostic appear and the action exits
+      with status 1 before any task is changed.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: schedule-single-item
+    when: >-
+      A task number and an accepted date are supplied.
+    then: >-
+      The task's threshold is set to t:YYYY-MM-DD when absent, or replaced when
+      present, using todo.sh append or replace so the priority and other text
+      are preserved.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: schedule-explicit-selection
+    when: >-
+      The item is a number, a comma-separated list, an inclusive range, or a
+      mixture such as 2,5-7,9, with a date, mv <date>, or rm.
+    then: >-
+      Leading zeros are normalized, out-of-range numbers and zero are rejected,
+      reversed ranges are rejected, and duplicate numbers are scheduled once.
+      Every selected line is validated before any line is changed; a malformed
+      selection or missing task writes an error to stderr, exits 1, and leaves
+      the task file unchanged.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: schedule-remove-and-move
+    when: >-
+      rm or mv <date> is applied to a task or selection.
+    then: >-
+      rm deletes the t: field and preserves the rest of the line including its
+      priority; mv <date> replaces the existing threshold with the new normalized
+      date.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: schedule-priority-confirmation
+    when: >-
+      A single letter is supplied as the item with a date, mv <date>, or rm.
+    then: >-
+      Tasks with that priority in either case are selected, their lines are
+      printed, and one y/N confirmation is requested on stderr. Declining or
+      giving anything other than y, Y, yes, YES, or Yes prints
+      "Schedule: cancelled." and changes nothing.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: schedule-priority-future-skipping
+    when: >-
+      A priority group is rescheduled with a date or mv <date> while
+      TODO_SCHEDULE_PRIORITY_RESCHEDULE_ALL is false.
+    then: >-
+      Tasks whose threshold is a valid date later than today are skipped with a
+      count in the output; tasks with no threshold or a threshold on or before
+      today are scheduled. Setting the variable to one of true, yes, 1, or on
+      includes the skipped tasks, and any other value is an error on stderr
+      with status 1. If every task is skipped, no confirmation is requested.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: schedule-priority-remove-all
+    when: >-
+      rm is applied to a priority group.
+    then: >-
+      Thresholds are removed from all tasks with that priority, including
+      future-scheduled ones, regardless of the reschedule-all setting.
+
+# AI-generated documentation (not reviewed by a human)
+acceptance:
+  # AI-generated documentation (not reviewed by a human)
+  - id: schedule-mixed-selection
+    given: >-
+      TODO_FILE contains at least nine tasks.
+    when: >-
+      todo.sh schedule 2,5-7,9 tomorrow is run.
+    then: >-
+      Tasks 2, 5, 6, 7, and 9 carry a threshold of tomorrow and no other task
+      is modified.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: schedule-invalid-selection-is-atomic
+    given: >-
+      TODO_FILE contains three tasks.
+    when: >-
+      todo.sh schedule 2,9 tomorrow is run.
+    then: >-
+      An "invalid task selection" error is written to stderr, the exit status
+      is 1, and no task line changes.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: schedule-priority-skips-future
+    given: >-
+      Two (R) tasks exist, one undated and one with a threshold later than
+      today, and stdin supplies n at the confirmation prompt.
+    when: >-
+      todo.sh schedule R tomorrow is run.
+    then: >-
+      The future task is reported as skipped, neither task changes, and the
+      output ends with "Schedule: cancelled."
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: schedule-priority-rm-includes-future
+    given: >-
+      A (R) task has a threshold later than today and the reschedule-all
+      setting is false.
+    when: >-
+      todo.sh schedule R rm is run with stdin supplying y.
+    then: >-
+      The t: field is removed from that task.

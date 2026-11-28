@@ -1,0 +1,76 @@
+# AI-generated documentation (not reviewed by a human)
+spec_version: 1
+
+# AI-generated documentation (not reviewed by a human)
+id: futuretasks
+
+# AI-generated documentation (not reviewed by a human)
+purpose: >-
+  Specify the futureTasks output filter used as TODOTXT_FINAL_FILTER, which
+  hides task lines whose t: threshold is still in the future while leaving all
+  other lines untouched. The requirements describe the filter as implemented.
+
+# AI-generated documentation (not reviewed by a human)
+requirements:
+  # AI-generated documentation (not reviewed by a human)
+  - id: futuretasks-input-output
+    when: >-
+      The filter is executed with lines on stdin.
+    then: >-
+      It reads line by line, writes each retained line to stdout with trailing
+      whitespace removed, preserves other content including ANSI codes, and
+      exits successfully after all input is consumed.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: futuretasks-threshold-match
+    when: >-
+      A line contains a t:YYYY-MM-DD pattern anywhere in it.
+    then: >-
+      The first match supplies year, month, and day components, which are
+      parsed as a datetime and compared with the current time.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: futuretasks-past-threshold-shown
+    when: >-
+      The parsed threshold datetime is earlier than the current time.
+    then: >-
+      The line is printed. A threshold of today is printed because midnight of
+      today is earlier than the current time.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: futuretasks-future-threshold-hidden
+    when: >-
+      The parsed threshold datetime is not earlier than the current time.
+    then: >-
+      The line is not printed.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: futuretasks-untagged-lines-pass
+    when: >-
+      A line has no t:YYYY-MM-DD match, including blank lines and tasks with
+      due: dates only.
+    then: >-
+      The line is printed unchanged apart from trailing whitespace removal.
+
+# AI-generated documentation (not reviewed by a human)
+acceptance:
+  # AI-generated documentation (not reviewed by a human)
+  - id: futuretasks-hides-only-future
+    given: >-
+      Stdin contains one task with t:yesterday, one with t:today, one with
+      t:tomorrow, and one with no threshold.
+    when: >-
+      filters/futureTasks is run.
+    then: >-
+      Output contains the yesterday, today, and untagged tasks but not the
+      tomorrow task.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: futuretasks-preserves-line-content
+    given: >-
+      A retained line contains ANSI color codes and leading spaces.
+    when: >-
+      filters/futureTasks is run.
+    then: >-
+      The codes and leading spaces appear in the output, with only trailing
+      whitespace stripped.

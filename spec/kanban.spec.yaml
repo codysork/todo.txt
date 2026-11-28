@@ -1,0 +1,70 @@
+# AI-generated documentation (not reviewed by a human)
+spec_version: 1
+
+# AI-generated documentation (not reviewed by a human)
+id: kanban
+
+# AI-generated documentation (not reviewed by a human)
+purpose: >-
+  Record the current scaffold state of the kanban add-on: it declares board
+  contexts and computes column dimensions but does not fetch tasks or draw a
+  board. This as-built spec deliberately specifies those limits rather than a
+  future board.
+
+# AI-generated documentation (not reviewed by a human)
+requirements:
+  # AI-generated documentation (not reviewed by a human)
+  - id: kanban-contexts
+    when: >-
+      The kanban action loads its configuration.
+    then: >-
+      It defines three context matchers in order: @Routine:[A-Za-z]* (matching
+      any routine frequency), @Todo, and @Doing. A backlog column is counted in
+      addition to those three, giving four columns.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: kanban-dimensions
+    when: >-
+      Board dimensions are calculated.
+    then: >-
+      The column width is the terminal width from tput cols divided by the
+      number of columns, and the column height is the terminal height from
+      tput lines minus a header height of three rows.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: kanban-no-rendering
+    when: >-
+      todo.sh kanban is invoked.
+    then: >-
+      draw_board computes the column count and dimensions, but the header and
+      board rendering functions produce no output, no task lines are read from
+      TODO_FILE, and the action exits successfully with an empty stdout.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: kanban-strict-mode
+    when: >-
+      The action is invoked with the action name or with the usage argument
+      that todo.sh passes while building help output.
+    then: >-
+      It uses set -Eeuo pipefail, discards the first argument, computes the
+      board dimensions, and prints no help text and no board.
+
+# AI-generated documentation (not reviewed by a human)
+acceptance:
+  # AI-generated documentation (not reviewed by a human)
+  - id: kanban-runs-without-output
+    given: >-
+      A terminal reports its size through tput and TODO_FILE contains tasks.
+    when: >-
+      todo.sh kanban is run.
+    then: >-
+      The command exits 0 and prints no board, context, or task rows.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: kanban-four-columns-calculated
+    given: >-
+      The configured contexts are the three defined matchers.
+    when: >-
+      get_num_columns is evaluated.
+    then: >-
+      The result is four, counting the backlog column.

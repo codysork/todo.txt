@@ -1,0 +1,120 @@
+# AI-generated documentation (not reviewed by a human)
+spec_version: 1
+
+# AI-generated documentation (not reviewed by a human)
+id: overview
+
+# AI-generated documentation (not reviewed by a human)
+purpose: >-
+  Specify the overview action, which runs an ordered set of configured todo.sh
+  views, suppresses repeated task numbers between sections, and optionally
+  appends the active tasks not covered by any view. The requirements describe
+  the action as currently implemented.
+
+# AI-generated documentation (not reviewed by a human)
+requirements:
+  # AI-generated documentation (not reviewed by a human)
+  - id: overview-usage
+    when: >-
+      The action receives usage, help, -h, or --help, possibly after its own
+      filename when run directly.
+    then: >-
+      Indented help for overview is printed to stdout and the action exits 0.
+      Any other argument produces "Overview: unexpected arguments: ..." on
+      stderr and exit status 1.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: overview-settings
+    when: >-
+      The overview action loads its environment settings.
+    then: >-
+      TODO_OVERVIEW_VIEWS is split on commas with shell-style quoting, empty
+      entries are dropped, and order and explicit arguments are preserved; the
+      built-in fallback is "today, routine, ls due, schedule". Boolean settings
+      accept 1, true, yes, on and 0, false, no, off case-insensitively; any other
+      value fails with "Overview: <name> must be true or false". The todo.sh
+      command comes from TODO_FULL_SH, then TODO_SH, then "todo.sh", and an
+      empty command is an error.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: overview-view-sections
+    when: >-
+      Each configured view command is run in order.
+    then: >-
+      It is invoked with TODOTXT_VERBOSE=0 and rendered under a
+      "=== <command> ===" heading followed by a blank line. Non-task output
+      such as "No routine tasks." is preserved, and a view with no rendered
+      lines shows "No tasks." instead.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: overview-deduplication
+    when: >-
+      A view output line begins with a task number after ANSI color codes are
+      stripped.
+    then: >-
+      That number is recorded; with TODO_OVERVIEW_DUPLICATE_TASKS=false a later
+      line with the same number is suppressed, while non-task lines are always
+      kept. With the setting true every row is kept, including repeats.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: overview-remaining-section
+    when: >-
+      TODO_OVERVIEW_SHOW_REMAINING_TASKS is true.
+    then: >-
+      A final "=== Remaining tasks ===" section runs todo.sh list, suppresses
+      any number already rendered by a view, and prints "No remaining tasks."
+      when nothing remains. When the setting is false the section is absent.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: overview-command-errors
+    when: >-
+      A configured view or the list command cannot run or exits nonzero.
+    then: >-
+      "Overview: ..." with the failing command and its stderr or exit status is
+      printed to stderr and the action exits 1; all commands are collected
+      before rendering, so no sections are printed.
+
+# AI-generated documentation (not reviewed by a human)
+acceptance:
+  # AI-generated documentation (not reviewed by a human)
+  - id: overview-dedupes-and-appends-remaining
+    given: >-
+      Views are "ls +Focus, ls @Work", remaining tasks are enabled, duplicates
+      are disabled, and one task "+Focus @Work" plus one task "remaining"
+      exist.
+    when: >-
+      todo.sh overview is run.
+    then: >-
+      The shared task is printed once under the first view, the remaining task
+      appears only in the final section, and section order is ls +Focus, ls
+      @Work, then Remaining tasks.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: overview-keeps-explicit-view-arguments
+    given: >-
+      TODO_OVERVIEW_VIEWS is "routine show all".
+    when: >-
+      The view list is parsed.
+    then: >-
+      The single view command is the three arguments routine, show, all.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: overview-invalid-boolean-fails
+    given: >-
+      TODO_OVERVIEW_DUPLICATE_TASKS is set to maybe.
+    when: >-
+      todo.sh overview is run.
+    then: >-
+      Stderr reports that the setting must be true or false and the exit
+      status is 1.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: overview-configured-view-order
+    given: >-
+      The repository config is active.
+    when: >-
+      todo.sh overview is run.
+    then: >-
+      Sections appear for each daily, weekly, and monthly routine view, today,
+      ls due, and schedule, in that order. Open question: README.md lists only
+      four configured views and omits the weekly and monthly routine views.

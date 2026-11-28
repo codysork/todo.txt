@@ -1,0 +1,154 @@
+# AI-generated documentation (not reviewed by a human)
+spec_version: 1
+
+# AI-generated documentation (not reviewed by a human)
+id: predict
+
+# AI-generated documentation (not reviewed by a human)
+purpose: >-
+  Specify the predict action, which summarizes one numeric metadata key from
+  completed tasks in done.txt and estimates the chance of maintaining a chosen
+  daily average over calendar horizons. The requirements describe the action
+  as currently implemented and tested.
+
+# AI-generated documentation (not reviewed by a human)
+requirements:
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-cli
+    when: >-
+      predict is invoked with help, -h, or --help, with no key, or with more
+      than two arguments.
+    then: >-
+      Help is printed and the action exits 0 for a help alias; a missing key
+      prints "Error: Usage: todo.sh predict KEY (name one numeric metadata
+      key)." on stderr and exits 1; a third argument prints a too-many-
+      arguments error and exits 1. A leading "predict" argument passed by
+      todo.sh is stripped before parsing.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-key-validation
+    when: >-
+      A metadata key is supplied.
+    then: >-
+      It must match ^[A-Za-z][A-Za-z0-9_-]*$ and be an exact token name;
+      otherwise "Error: Invalid metadata key: <key>" is printed on stderr and
+      the action exits 1. DONE_FILE comes from the environment or from
+      TODO_DIR/done.txt and must be a readable file.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-record-filtering
+    when: >-
+      A line of DONE_FILE is examined for the selected key.
+    then: >-
+      It is used only when it starts with "x ", has a valid ISO completion date
+      on or before today, and contains the exact key. Dates with no valid
+      selected-key observation are not included as zero days, and values for
+      other keys are never merged into the selected key's history.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-value-validation
+    when: >-
+      A candidate value for the selected key is parsed.
+    then: >-
+      Date-shaped values and nonnumeric text are skipped; signed, decimal,
+      leading-decimal, and exponent forms are accepted. A repeated selected key
+      on one record, a numeric-looking malformed value, NaN, or infinity causes
+      a specific error on stderr and exit status 1. Valid values from multiple
+      records on the same completion date are summed.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-history-statistics
+    when: >-
+      At least one valid observation exists for the key.
+    then: >-
+      The report shows the selected key, the arithmetic mean over observed
+      days, the median, the population standard deviation, the percentage of
+      observed days with value zero, and the number of observation days. With
+      no valid observations the action reports no data and exits 1 rather than
+      fabricating zero statistics.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-target-pace
+    when: >-
+      An optional second argument is supplied, or it is omitted.
+    then: >-
+      The argument must be a finite float or the action prints a target error
+      and exits 1; without it the historical mean is the target. The report
+      prints that target with two decimals as <key>/day.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-bootstrap-forecast
+    when: >-
+      The forecast table is computed.
+    then: >-
+      Twenty thousand simulations draw daily histories in contiguous blocks of
+      up to seven observed days with wraparound and a fixed seed of zero. For
+      Day (1 day), Week (7 days), Month (calendar days in the current month),
+      and Year (calendar days in the current year), the probability is the
+      fraction of simulated paths whose running total reaches the target pace
+      multiplied by the elapsed day count. The reported MC error is the
+      binomial sampling error sqrt(p(1-p)/simulations), and identical inputs
+      produce identical output.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-report-content
+    when: >-
+      A successful report is printed.
+    then: >-
+      It contains a "Pace Maintainability Report" title, the statistics lines,
+      a Period/Target effort/P(maintain)/MC error table with one row per
+      horizon, and interpretation notes stating that probability means meeting
+      or exceeding the target total and that MC error is sampling error only.
+
+# AI-generated documentation (not reviewed by a human)
+acceptance:
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-key-isolated-statistics
+    given: >-
+      Completed records contain both effort and physical values on the same
+      dates, with different magnitudes.
+    when: >-
+      todo.sh predict effort is run.
+    then: >-
+      The report names effort as the selected key and its mean, median,
+      deviation, zero frequency, and observation count are computed only from
+      effort values.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-duplicate-key-rejected
+    given: >-
+      One completed record contains two effort: tokens.
+    when: >-
+      todo.sh predict effort is run.
+    then: >-
+      Stderr reports a duplicate key on that line number and the exit status
+      is 1.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-missing-key-reports-no-data
+    given: >-
+      DONE_FILE has valid completed records but none contain the selected key.
+    when: >-
+      todo.sh predict missing is run.
+    then: >-
+      Stderr reports no data for that key and the exit status is 1.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-explicit-target
+    given: >-
+      A valid effort history exists.
+    when: >-
+      todo.sh predict effort 3.5 is run.
+    then: >-
+      The report shows a target pace of 3.50 effort/day and later row targets
+      equal 3.5 multiplied by each horizon's day count.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-report-is-reproducible
+    given: >-
+      The same DONE_FILE contents and the same date.
+    when: >-
+      todo.sh predict effort is run twice.
+    then: >-
+      Both reports are byte-for-byte identical, including all probabilities
+      and MC errors.

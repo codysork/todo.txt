@@ -1,0 +1,122 @@
+# AI-generated documentation (not reviewed by a human)
+spec_version: 1
+
+# AI-generated documentation (not reviewed by a human)
+id: repeat
+
+# AI-generated documentation (not reviewed by a human)
+purpose: >-
+  Specify the repeat action, which completes a task and immediately re-enters
+  it, optionally running preflight and after_add hooks to reschedule the new
+  copy. The requirements describe the action and its configured hooks as they
+  exist in the repository.
+
+# AI-generated documentation (not reviewed by a human)
+requirements:
+  # AI-generated documentation (not reviewed by a human)
+  - id: repeat-usage
+    when: >-
+      The action receives usage or help as its first argument, or the item
+      argument is help, -h, or --help.
+    then: >-
+      Indented help describing repeat ITEM and repeat ITEM [DATE|DAY] is printed
+      to stdout and the action exits successfully without changing tasks.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: repeat-item-validation
+    when: >-
+      A repeat item is supplied.
+    then: >-
+      The item must be a decimal number; otherwise "Error! Usage:" and the help
+      text are printed. A number that has no corresponding line in TODO_FILE
+      produces "TODO: No task <n>." on stdout and exit status 1.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: repeat-clean-line
+    when: >-
+      The source task line is prepared for re-entry.
+    then: >-
+      A leading priority is removed and restored in uppercase after any leading
+      creation date is stripped, so the re-entered line keeps its priority but
+      not the old completion or creation prefix.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: repeat-without-date
+    when: >-
+      repeat is called with an item and no date parameter.
+    then: >-
+      The original task is completed with todo.sh command do, the cleaned line
+      is re-added with todo.sh command add, no hook events are required, and
+      the new task has no t: threshold.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: repeat-target-date-requires-hooks
+    when: >-
+      repeat is called with a date parameter.
+    then: >-
+      Both repeat/preflight and repeat/after_add must contain at least one
+      executable hook; otherwise "Error: repeat date hooks are not fully
+      configured." is written to stderr and the action exits 1 before the
+      original task is completed. A bare integer or +integer parameter is
+      normalized to that number of days before being passed to the hooks.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: repeat-hook-sequence
+    when: >-
+      A repeat with a date parameter passes the hook requirement.
+    then: >-
+      preflight hooks receive the original item and target date first; then the
+      original is completed and the cleaned line added through todo.sh command
+      builtins; the new item number is the last line of TODO_FILE; and after_add
+      hooks receive the original item, the new item, and the target date. Any
+      failed hook, do, or add status is propagated as the action's exit status.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: repeat-no-manual-file-edits
+    when: >-
+      repeat mutates task state.
+    then: >-
+      It uses todo.sh builtins with verbose output disabled and never writes
+      TODO_FILE or DONE_FILE directly.
+
+# AI-generated documentation (not reviewed by a human)
+acceptance:
+  # AI-generated documentation (not reviewed by a human)
+  - id: repeat-without-date-round-trip
+    given: >-
+      TODO_FILE contains one line "(A) repeated task" at number 1.
+    when: >-
+      todo.sh repeat 1 is run with hooks installed.
+    then: >-
+      DONE_FILE gains the completed original, TODO_FILE contains one line
+      starting with (A) repeated task, and that line has no t: field.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: repeat-with-date-reschedules-new-copy
+    given: >-
+      TODO_FILE contains "(A) repeated task" at number 1 and the configured
+      schedule hooks are installed.
+    when: >-
+      todo.sh repeat 1 2 is run.
+    then: >-
+      The new task is the only active task, keeps (A), and carries a t: field
+      two days from today.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: repeat-invalid-date-changes-nothing
+    given: >-
+      TODO_FILE and DONE_FILE have known contents and hooks are installed.
+    when: >-
+      todo.sh repeat 1 not-a-date is run.
+    then: >-
+      Stderr contains "invalid repeat target date", the exit status is
+      nonzero, and both task files are byte-for-byte unchanged.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: repeat-without-date-needs-no-hooks
+    given: >-
+      TODO_HOOKS_DIR points at a directory with no repeat hooks.
+    when: >-
+      todo.sh repeat 1 is run.
+    then: >-
+      The task completes and re-enters successfully with no hook requirement.

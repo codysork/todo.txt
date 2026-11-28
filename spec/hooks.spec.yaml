@@ -1,0 +1,116 @@
+# AI-generated documentation (not reviewed by a human)
+spec_version: 1
+
+# AI-generated documentation (not reviewed by a human)
+id: hooks
+
+# AI-generated documentation (not reviewed by a human)
+purpose: >-
+  Specify the shared hook runner in lib/hooks.sh and the repeat schedule hooks
+  under hooks/repeat. Together they validate a repeat target date before a task
+  changes and apply the threshold to the newly added task afterwards.
+
+# AI-generated documentation (not reviewed by a human)
+requirements:
+  # AI-generated documentation (not reviewed by a human)
+  - id: hooks-discovery-and-order
+    when: >-
+      A hook event is run or counted for an action.
+    then: >-
+      Only regular executable files directly inside
+      $TODO_HOOKS_DIR/<action>/<event>.d are considered, and they are visited in
+      filename order under LC_ALL=C. A missing directory yields no hooks.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: hooks-event-context
+    when: >-
+      A hook file is executed by the runner.
+    then: >-
+      It receives TODO_HOOK_ACTION and TODO_HOOK_EVENT in its environment and
+      the event arguments as positional parameters starting at $1, and its
+      standard output and error are inherited.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: hooks-count
+    when: >-
+      todo_count_hooks or the count subcommand is called for ACTION EVENT.
+    then: >-
+      The number of executable hooks is printed without a trailing newline, and
+      todo_run_hooks sets TODO_HOOKS_RUN_COUNT to the number of hooks it
+      attempted before stopping or finishing.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: hooks-failure-stops-chain
+    when: >-
+      A hook exits with a nonzero status.
+    then: >-
+      Later hooks are not run, "Hook failed: <action>/<event> <basename>
+      (exit <status>)." is written to stderr, and that status is returned to
+      the caller.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: hooks-optional-success
+    when: >-
+      The hook directory is absent or contains no executable hooks.
+    then: >-
+      Running the event succeeds with status 0 and a run count of 0.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: hooks-cli
+    when: >-
+      lib/hooks.sh is executed directly with count, run, or a help alias.
+    then: >-
+      count requires exactly ACTION EVENT and run requires ACTION EVENT plus
+      optional arguments; help and usage print the usage line to stdout; any
+      other invocation prints usage to stderr and exits 2.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: repeat-preflight-hook
+    when: >-
+      The repeat preflight hook runs with an original item and target date.
+    then: >-
+      It strips a leading "mv " and requires the value to be convertible by
+      GNU date -d to %F, and requires todo.sh help schedule to succeed. Either
+      failure writes an error to stderr and exits 1 before the original task
+      is completed.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: repeat-after-add-hook
+    when: >-
+      The repeat after_add hook runs with an original item, a new item, and an
+      optional target date.
+    then: >-
+      With no target date it exits 0 without changing anything; otherwise it
+      runs todo.sh schedule on the new item with that target date.
+
+# AI-generated documentation (not reviewed by a human)
+acceptance:
+  # AI-generated documentation (not reviewed by a human)
+  - id: hooks-run-in-filename-order
+    given: >-
+      A repeat/preflight.d directory contains executable 10-first and
+      20-second hooks that append their names and event context to a log.
+    when: >-
+      todo_run_hooks repeat preflight 71 tomorrow is called.
+    then: >-
+      The log records first then second, each with action repeat, event
+      preflight, and arguments 71 and tomorrow, and the run count is 2.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: hooks-failure-propagates
+    given: >-
+      repeat/after_add.d contains 10-fail exiting 7 and 20-later writing a log.
+    when: >-
+      todo_run_hooks repeat after_add 71 72 is called.
+    then: >-
+      The status is 7, the run count is 1, a "Hook failed" message appears on
+      stderr, and 20-later never runs.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: hooks-missing-directory-is-success
+    given: >-
+      The requested action/event hook directory does not exist.
+    when: >-
+      todo_run_hooks is called for that event.
+    then: >-
+      The status is 0 and the run count is 0.

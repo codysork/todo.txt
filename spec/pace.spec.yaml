@@ -1,0 +1,105 @@
+# AI-generated documentation (not reviewed by a human)
+spec_version: 1
+
+# AI-generated documentation (not reviewed by a human)
+id: pace
+
+# AI-generated documentation (not reviewed by a human)
+purpose: >-
+  Specify the pace action, which reports physical, mental, and stress score
+  totals and their per-day velocities from completed tasks in done.txt for one
+  or more calendar periods. The requirements reflect the action as currently
+  implemented.
+
+# AI-generated documentation (not reviewed by a human)
+requirements:
+  # AI-generated documentation (not reviewed by a human)
+  - id: pace-usage
+    when: >-
+      The mode argument is help, -h, or --help.
+    then: >-
+      The usage line "Usage: todo.sh pace [daily|weekly|monthly|annual]
+      [count]" is printed to stdout and the action exits 0.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: pace-modes-and-counts
+    when: >-
+      A mode and optional count are supplied.
+    then: >-
+      day/daily, week/weekly, month/monthly, and annual/year/yearly are
+      accepted; an unknown mode prints "Error: Invalid pace mode '<mode>'." and
+      usage on stderr with status 1. The default counts are 30 daily, 52
+      weekly, 12 monthly, and 10 annual; a supplied count must be a positive
+      decimal integer or the action prints a count error and exits 1.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: pace-score-summation
+    when: >-
+      A period is summarized from DONE_FILE.
+    then: >-
+      Only lines beginning with "x <date>" whose date lies inside the inclusive
+      period contribute, and for each requested field physical, mental, or
+      stress the first token matching <field>:<decimal> on that line is added
+      to a total formatted with two decimals.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: pace-period-ranges
+    when: >-
+      A mode is selected for one or more periods.
+    then: >-
+      daily covers the current day; weekly covers Monday through Sunday with
+      the end clamped to today; monthly covers the first through last day of a
+      month with the end clamped to today; annual covers January 1 through
+      December 31 with the end clamped to today. Counts greater than one are
+      reported from the oldest period to the current one.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: pace-single-table
+    when: >-
+      A report is rendered.
+    then: >-
+      One table is printed with columns Period, Days, Physical, Physical/day,
+      Mental, Mental/day, Stress, and Stress/day. Each velocity is the period
+      total divided by the inclusive day count and formatted to two decimals.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: pace-dependencies-and-errors
+    when: >-
+      The action starts or the done file is checked.
+    then: >-
+      Missing date or awk commands produce "Error: Required command '<cmd>' not
+      found." on stderr with status 1, and a missing or unreadable DONE_FILE
+      produces "Error: Cannot read done file: <path>" on stderr with status 1.
+
+# AI-generated documentation (not reviewed by a human)
+acceptance:
+  # AI-generated documentation (not reviewed by a human)
+  - id: pace-combined-table
+    given: >-
+      DONE_FILE has completion lines for yesterday and today carrying
+      physical, mental, and stress values.
+    when: >-
+      todo.sh pace daily 2 is run.
+    then: >-
+      Exactly one header row contains Physical, Mental, and Stress columns,
+      and each of the two date rows shows the summed values and per-day rates
+      for all three fields.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: pace-same-day-aggregation
+    given: >-
+      Two tasks completed today carry physical:3 and physical:4.
+    when: >-
+      todo.sh pace daily 1 is run.
+    then: >-
+      The physical total for today is 7.00 and the physical/day rate is 7.00.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: pace-invalid-count
+    given: >-
+      No other state is required.
+    when: >-
+      todo.sh pace daily 0 is run.
+    then: >-
+      "Error: Count must be a positive integer." is written to stderr and the
+      exit status is 1.

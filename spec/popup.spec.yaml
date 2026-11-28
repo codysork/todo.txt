@@ -1,0 +1,74 @@
+# AI-generated documentation (not reviewed by a human)
+spec_version: 1
+
+# AI-generated documentation (not reviewed by a human)
+id: popup
+
+# AI-generated documentation (not reviewed by a human)
+purpose: >-
+  Specify the popup action, which asks for a task description in a graphical
+  dialog, adds it through todo.sh, and reports the result with desktop
+  notifications. The requirements describe the action as currently implemented.
+
+# AI-generated documentation (not reviewed by a human)
+requirements:
+  # AI-generated documentation (not reviewed by a human)
+  - id: popup-usage
+    when: >-
+      The script is invoked with usage, help, -h, or --help, or with its own
+      name as the first argument followed by a help alias.
+    then: >-
+      Indented help stating that popup adds a task through a graphical dialog
+      is printed to stdout and the action exits 0 without opening a dialog.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: popup-task-entry
+    when: >-
+      The action is invoked normally.
+    then: >-
+      kdialog is called with title "Add Todo Task" and an inputbox prompting
+      for the new task, and the entered text becomes the task description.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: popup-cancel-or-empty
+    when: >-
+      The dialog is cancelled or returns an empty string.
+    then: >-
+      The action exits 0 without calling todo.sh add and without sending a
+      notification.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: popup-add-success
+    when: >-
+      A nonempty task is entered and todo.sh add succeeds.
+    then: >-
+      notify-send displays a normal "Todo" notification containing
+      "Task added: <task>" and the action exits 0.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: popup-add-failure
+    when: >-
+      A nonempty task is entered but todo.sh add fails.
+    then: >-
+      notify-send displays a critical "Todo" notification with "Failed to add
+      task." and the action exits 1.
+
+# AI-generated documentation (not reviewed by a human)
+acceptance:
+  # AI-generated documentation (not reviewed by a human)
+  - id: popup-help-needs-no-dialog
+    given: >-
+      kdialog is not available or its use would be observable.
+    when: >-
+      ./actions/popup usage is run.
+    then: >-
+      Help text is printed, the exit status is 0, and no dialog is launched.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: popup-cancel-is-a-no-op
+    given: >-
+      kdialog is cancelled by the user.
+    when: >-
+      ./actions/popup is run.
+    then: >-
+      No task is added, no notification is sent, and the exit status is 0.
