@@ -2,7 +2,6 @@
 #
 # Apply the optional threshold date to the repeated task.
 
-# AI-generated code (unreviewed by a human)
 set -euo pipefail
 
 original_item=$1
