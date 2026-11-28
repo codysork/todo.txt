@@ -22,13 +22,11 @@ TODAY=$(date +%Y-%m-%d)
 # Functions
 #----------------------------------------------------------------------------
 
-# AI-generated documentation (not reviewed by a human)
 # @description Print the pace command's usage line.
 usage() {
     echo "Usage: todo.sh pace [daily|weekly|monthly|annual] [count]"
 }
 
-# AI-generated documentation (not reviewed by a human)
 # @description Sum one score field from completions in a date range.
 # @param field: metadata key to sum (physical, mental, or stress).
 # @param start: first completion date, inclusive.
@@ -54,7 +52,6 @@ sum_points() {
     ' "$DONE_FILE"
 }
 
-# AI-generated documentation (not reviewed by a human)
 # @description Count calendar days between two dates, inclusive.
 # @param start: first ISO date.
 # @param end: last ISO date.
@@ -69,7 +66,6 @@ days_between() {
     ) / 86400 + 1 ))
 }
 
-# AI-generated documentation (not reviewed by a human)
 # @description Print the report's column headings.
 print_header() {
     echo
@@ -81,7 +77,6 @@ print_header() {
         "----------" "------------" "----------" "------------"
 }
 
-# AI-generated documentation (not reviewed by a human)
 # @description Print one report row with totals and per-day velocities.
 # @param label: period label shown in the first column.
 # @param start: first date of the period.
@@ -115,7 +110,6 @@ report_period() {
         "$mental" "$mental_per_day" "$stress" "$stress_per_day"
 }
 
-# AI-generated documentation (not reviewed by a human)
 # @description Limit a period end date to today.
 # @param end: candidate end date as an ISO string.
 # @return: today when end is in the future, otherwise end.
@@ -128,7 +122,6 @@ clamp_to_today() {
     fi
 }
 
-# AI-generated documentation (not reviewed by a human)
 # @description Print a range of periods for one configured mode.
 # @param anchor: date from which period starts are counted backwards.
 # @param step: date unit for each backward step (days, weeks, months, years).
@@ -152,7 +145,6 @@ report_range() {
     done
 }
 
-# AI-generated documentation (not reviewed by a human)
 # @description Dispatch to the range configuration for the selected MODE.
 report_mode() {
     local anchor
