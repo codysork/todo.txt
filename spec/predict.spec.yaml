@@ -1,23 +1,35 @@
 spec_version: 1
 id: predict
 purpose: >-
-  Specify the predict action, which summarizes one numeric metadata key from
+  Specify the predict action, which now takes a mandatory mode as its first
+  argument after the action name. The first mode, target, contains the existing
+  forecasting behavior: it summarizes one arbitrary numeric metadata key from
   completed tasks in done.txt and estimates the chance of maintaining a chosen
-  daily average over calendar horizons. Monte Carlo simulation is mandatory for
-  the forecast: the report must not use a closed-form formula or a single
-  historical path. The remaining requirements describe the action as currently
-  implemented and tested.
+  daily average over calendar horizons using mandatory Monte Carlo simulation,
+  never a closed-form formula or a single historical path. This is target
+  state: the current implementation still parses predict KEY [value] with no
+  modes, so the mode contract below is not implemented yet.
 requirements:
   - id: predict-cli
     when: >-
-      predict is invoked with help, -h, or --help, with no key, or with more
-      than two arguments.
+      predict is invoked with help, -h, or --help, with no mode, or with more
+      than three arguments after the action name.
     then: >-
-      Help is printed and the action exits 0 for a help alias; a missing key
-      prints "Error: Usage: todo.sh predict KEY (name one numeric metadata
-      key)." on stderr and exits 1; a third argument prints a too-many-
-      arguments error and exits 1. A leading "predict" argument passed by
-      todo.sh is stripped before parsing.
+      Help is printed and the action exits 0 for a help alias; a missing mode
+      prints "Error: Usage: todo.sh predict <mode> KEY [value] (name a mode
+      such as target)." on stderr and exits 1; a fourth argument prints a
+      too-many-arguments error and exits 1. A leading "predict" argument
+      passed by todo.sh is stripped before parsing.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-modes
+    when: >-
+      A mode argument is supplied as the first argument after the action name.
+    then: >-
+      The mode is mandatory and positional. The only defined mode is target,
+      which runs the forecasting behavior specified by the remaining
+      requirements. Any other mode is rejected with a usage error on stderr and
+      exit status 1, and the error names target as a valid mode.
   - id: predict-key-validation
     when: >-
       A metadata key is supplied.
@@ -56,7 +68,8 @@ requirements:
       fabricating zero statistics.
   - id: predict-target-pace
     when: >-
-      An optional second argument is supplied, or it is omitted.
+      An optional third argument after the mode and key is supplied, or it is
+      omitted.
     then: >-
       The argument must be a finite float or the action prints a target error
       and exits 1; without it the historical mean is the target. The report
@@ -94,7 +107,7 @@ acceptance:
       Completed records contain both focus and stress values on the same dates,
       with different magnitudes.
     when: >-
-      todo.sh predict focus is run.
+      todo.sh predict target focus is run.
     then: >-
       The report names focus as the selected key and its mean, median,
       deviation, zero frequency, and observation count are computed only from
@@ -103,7 +116,7 @@ acceptance:
     given: >-
       One completed record contains two focus: tokens.
     when: >-
-      todo.sh predict focus is run.
+      todo.sh predict target focus is run.
     then: >-
       Stderr reports a duplicate key on that line number and the exit status
       is 1.
@@ -111,14 +124,14 @@ acceptance:
     given: >-
       DONE_FILE has valid completed records but none contain the selected key.
     when: >-
-      todo.sh predict missing is run.
+      todo.sh predict target missing is run.
     then: >-
       Stderr reports no data for that key and the exit status is 1.
   - id: predict-explicit-target
     given: >-
       A valid focus history exists.
     when: >-
-      todo.sh predict focus 3.5 is run.
+      todo.sh predict target focus 3.5 is run.
     then: >-
       The report shows a target pace of 3.50 focus/day and later row targets
       equal 3.5 multiplied by each horizon's day count.
@@ -126,7 +139,7 @@ acceptance:
     given: >-
       The same DONE_FILE contents and the same date.
     when: >-
-      todo.sh predict focus is run twice.
+      todo.sh predict target focus is run twice.
     then: >-
       Both reports are byte-for-byte identical, including all probabilities
       and MC errors.
@@ -134,7 +147,7 @@ acceptance:
     given: >-
       A valid focus history exists.
     when: >-
-      todo.sh predict focus is run.
+      todo.sh predict target focus is run.
     then: >-
       The report states "Simulations: 20,000" and a block size no larger than
       seven days, and the P(maintain) column contains simulation-derived
@@ -144,7 +157,7 @@ acceptance:
       A valid history exists and two runs use target paces at or below the
       smallest observation and above every observation, respectively.
     when: >-
-      todo.sh predict focus <low> and todo.sh predict focus <high> are run.
+      todo.sh predict target focus <low> and todo.sh predict target focus <high> are run.
     then: >-
       The low target reports 100.0% with 0.00 pp MC error for every horizon,
       and the high target reports 0.0% with 0.00 pp MC error for every horizon.
@@ -152,7 +165,7 @@ acceptance:
     given: >-
       DONE_FILE contains only one valid observation for the selected key.
     when: >-
-      todo.sh predict focus is run.
+      todo.sh predict target focus is run.
     then: >-
       All four horizon rows are printed, the reported block size is one day,
       and repeated runs remain byte-for-byte identical.
@@ -161,7 +174,37 @@ acceptance:
       DONE_FILE contains valid completed records with a custom key such as
       physical-exertion and no records with focus.
     when: >-
-      todo.sh predict physical-exertion is run.
+      todo.sh predict target physical-exertion is run.
     then: >-
       The action exits 0, the report names physical-exertion as the selected
       key, and its statistics come only from that key's values.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-target-mode-runs-forecast
+    given: >-
+      A valid history exists for an arbitrary key and the target mode is named.
+    when: >-
+      todo.sh predict target focus is run.
+    then: >-
+      The full Pace Maintainability Report is printed, including history
+      statistics, Monte Carlo horizons, and MC errors.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-mode-is-required
+    given: >-
+      A valid history exists but no mode argument is supplied.
+    when: >-
+      todo.sh predict focus is run.
+    then: >-
+      Stderr reports that a mode such as target is required and the exit
+      status is 1; no report is printed.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-unknown-mode-rejected
+    given: >-
+      A valid history exists.
+    when: >-
+      todo.sh predict bogus focus is run.
+    then: >-
+      Stderr reports that bogus is not a known mode and names target as valid,
+      and the exit status is 1.
