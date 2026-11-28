@@ -6,9 +6,11 @@ purpose: >-
   forecasting behavior: it summarizes one arbitrary numeric metadata key from
   completed tasks in done.txt and estimates the chance of maintaining a chosen
   daily average over calendar horizons using mandatory Monte Carlo simulation,
-  never a closed-form formula or a single historical path. This is target
-  state: the current implementation still parses predict KEY [value] with no
-  modes, so the mode contract below is not implemented yet.
+  never a closed-form formula or a single historical path. A second mode,
+  baseline, reports the highest daily value that can be met with 100 percent
+  probability every day. This is target state: the current implementation still
+  parses predict KEY [value] with no modes, so neither mode contract below is
+  implemented yet.
 requirements:
   - id: predict-cli
     when: >-
@@ -17,19 +19,44 @@ requirements:
     then: >-
       Help is printed and the action exits 0 for a help alias; a missing mode
       prints "Error: Usage: todo.sh predict <mode> KEY [value] (name a mode
-      such as target)." on stderr and exits 1; a fourth argument prints a
-      too-many-arguments error and exits 1. A leading "predict" argument
-      passed by todo.sh is stripped before parsing.
+      such as target or baseline)." on stderr and exits 1; a fourth argument
+      prints a too-many-arguments error and exits 1. A leading "predict"
+      argument passed by todo.sh is stripped before parsing.
 
   # AI-generated documentation (not reviewed by a human)
   - id: predict-modes
     when: >-
       A mode argument is supplied as the first argument after the action name.
     then: >-
-      The mode is mandatory and positional. The only defined mode is target,
-      which runs the forecasting behavior specified by the remaining
-      requirements. Any other mode is rejected with a usage error on stderr and
-      exit status 1, and the error names target as a valid mode.
+      The mode is mandatory and positional. Two modes are defined: target runs
+      the Monte Carlo forecasting behavior specified by the remaining
+      requirements, and baseline reports the highest guaranteed daily value.
+      Any other mode is rejected with a usage error on stderr and exit status
+      1, and the error names target and baseline as valid modes.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-baseline-mode
+    when: >-
+      predict baseline is invoked with a metadata key and no third argument.
+    then: >-
+      The action computes the highest daily value that can be met with 100
+      percent probability every day: the minimum of the valid daily values
+      aggregated for that key from done.txt, which is the highest target pace
+      for which the target-mode Monte Carlo model reports 100.0 percent at
+      every horizon. It prints a single line "Baseline: <N.NN> <key>/day" and
+      no forecast table, then exits 0. A third argument is a usage error with
+      exit status 1.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-baseline-data-rules
+    when: >-
+      Baseline mode reads completion records for the selected key.
+    then: >-
+      It applies the same key validation, record filtering, numeric validation,
+      and per-date aggregation as target mode, keeping values for other keys
+      separate and never inserting zero days for dates with no observation.
+      An invalid key, unreadable done file, or key with no valid observations
+      produces the same error and exit status as target mode.
   - id: predict-key-validation
     when: >-
       A metadata key is supplied.
@@ -206,5 +233,45 @@ acceptance:
     when: >-
       todo.sh predict bogus focus is run.
     then: >-
-      Stderr reports that bogus is not a known mode and names target as valid,
-      and the exit status is 1.
+      Stderr reports that bogus is not a known mode and names target and
+      baseline as valid, and the exit status is 1.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-baseline-equals-minimum-day
+    given: >-
+      The valid daily values for focus are 2, 5, and 9.
+    when: >-
+      todo.sh predict baseline focus is run.
+    then: >-
+      The only report line is "Baseline: 2.00 focus/day", with no Pace
+      Maintainability Report or horizon table.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-baseline-guarantees-every-horizon
+    given: >-
+      Baseline mode reports B for a key with valid daily values.
+    when: >-
+      todo.sh predict target <key> B is run.
+    then: >-
+      All four horizons report 100.0 percent P(maintain) with 0.00 pp MC error.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-baseline-key-isolation
+    given: >-
+      Completed records contain focus values and higher stress values, and no
+      valid observation exists for missing.
+    when: >-
+      todo.sh predict baseline focus and todo.sh predict baseline missing are
+      run.
+    then: >-
+      The first baseline is computed from focus values only, and the second
+      reports no data for missing with exit status 1.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-baseline-rejects-value-argument
+    given: >-
+      A valid history exists for focus.
+    when: >-
+      todo.sh predict baseline focus 3.5 is run.
+    then: >-
+      Stderr reports a usage error and the exit status is 1.
