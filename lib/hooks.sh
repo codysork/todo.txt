@@ -3,10 +3,9 @@
 # @file hooks (todo.sh add-on hook runner)
 # @author Cody Sork <codysork@gmail.com> with help from AI agents
 # @created 2026-11-22
-# @modified 2026-11-22
+# @modified 2026-11-27
 # @description Run configured hooks for todo.sh add-ons.
 
-# AI-generated code (unreviewed by a human)
 todo_run_hooks() {
 	local action=$1
 	local event=$2
@@ -34,7 +33,6 @@ todo_run_hooks() {
 	done
 }
 
-# AI-generated code (unreviewed by a human)
 todo_count_hooks() {
 	local action=$1
 	local event=$2
@@ -53,12 +51,10 @@ todo_count_hooks() {
 	printf '%s' "$count"
 }
 
-# AI-generated code (unreviewed by a human)
 todo_hooks_usage() {
 	echo "Usage: hooks.sh <count|run> ACTION EVENT [ARG...]"
 }
 
-# AI-generated code (unreviewed by a human)
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
 	command=${1:-}
 	shift || true
