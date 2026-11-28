@@ -10,43 +10,51 @@ purpose: >-
   baseline, reports the highest daily value that can be met with 100 percent
   probability every day. A third mode, recovery, estimates the most likely
   number of days for the running daily average to return to the historical mean
-  after a day reaching a supplied value. In recovery, "baseline" means the
-  historical mean rather than the baseline-mode minimum. This is target state:
-  the current implementation still parses predict KEY [value] with no modes, so
-  none of the mode contracts below are implemented yet.
+  after a day reaching a supplied value, or after the highest observed day when
+  no day reaches the value. In recovery, "baseline" means the historical mean
+  rather than the baseline-mode minimum. This is target state: the current
+  implementation still parses predict KEY [value] with no modes, so none of the
+  mode contracts below are implemented yet, and the target-mode report still
+  uses the "Target effort" heading instead of the "Target value" heading
+  specified below.
 requirements:
   - id: predict-cli
     when: >-
       predict is invoked with help, -h, or --help, with no mode, or with more
       than three arguments after the action name.
     then: >-
-      Help is printed and the action exits 0 for a help alias; a missing mode
-      prints "Error: Usage: todo.sh predict <mode> KEY [value] (name a mode
-      such as target, baseline, or recovery)." on stderr and exits 1; a fourth argument
-      prints a too-many-arguments error and exits 1. A leading "predict"
-      argument passed by todo.sh is stripped before parsing.
+      Help aliases are checked before mode validation, as the first argument
+      after the action name: help, -h, or --help prints help and exits 0. With
+      no arguments after the action name, a missing mode prints "Error: Usage:
+      todo.sh predict <mode> KEY [value] (name a mode such as target, baseline,
+      or recovery)." on stderr and exits 1; a fourth argument prints a
+      too-many-arguments error and exits 1. A leading "predict" argument passed
+      by todo.sh is stripped before parsing.
   - id: predict-modes
     when: >-
-      A mode argument is supplied as the first argument after the action name.
+      A first argument is supplied after the action name.
     then: >-
-      The mode is mandatory and positional. Three modes are defined: target runs
+      Except for the help aliases checked before mode validation, that argument
+      is always interpreted as the mode, even when it is the only argument; the
+      mode is mandatory and positional. Three modes are defined: target runs
       the Monte Carlo forecasting behavior specified by the remaining
       requirements, baseline reports the highest guaranteed daily value, and
       recovery estimates the most likely days to return to the historical mean
-      after a day at a supplied value. Any other mode is rejected with a usage
-      error on stderr and exit status 1, and the error names target, baseline,
-      and recovery as valid modes.
+      after a day at a supplied value. Any other first argument is an unknown
+      mode, rejected with a usage error on stderr and exit status 1, and the
+      error names target, baseline, and recovery as valid modes.
   - id: predict-baseline-mode
     when: >-
       predict baseline is invoked with a metadata key and no third argument.
     then: >-
       The action computes the highest daily value that can be met with 100
       percent probability every day: the minimum of the valid daily values
-      aggregated for that key from done.txt, which is the highest target pace
-      for which the target-mode Monte Carlo model reports 100.0 percent at
-      every horizon. It prints a single line "Baseline: <N.NN> <key>/day" and
-      no forecast table, then exits 0. A third argument is a usage error with
-      exit status 1.
+      aggregated for that key from done.txt. At that pace the target-mode Monte
+      Carlo model reports 100.0 percent at every horizon; displayed percentages
+      are rounded rather than exact probabilities. It prints a single line
+      "Baseline: <N.NN> <key>/day" and no forecast table, then exits 0; the
+      printed value is rounded to two decimals. A third argument is a usage
+      error with exit status 1.
   - id: predict-baseline-data-rules
     when: >-
       Baseline mode reads completion records for the selected key.
@@ -60,22 +68,25 @@ requirements:
     when: >-
       predict recovery is invoked with a metadata key and a numeric value.
     then: >-
-      The action selects a starting historical day whose aggregated value is at
-      least the supplied value, choosing the qualifying day closest to the
-      supplied value and the earliest date on ties; when none qualifies it
-      starts from the day with the highest observed value. It then draws
-      following days from the same seeded moving-block bootstrap as target mode
-      (20,000 paths, blocks of up to seven days) and measures, for each path,
-      the first later day whose running average including the starting day is
-      less than or equal to the historical mean. The reported result is the
-      most frequent day count across paths, using the smallest count on ties,
-      printed as a single line "Recovery: <N> days" with no forecast table, and
-      the action exits 0. A supplied value at or below the historical mean
-      returns zero recovery days, printed as "Recovery: 0 days". When the
-      supplied value is higher than the highest historical daily value, the
-      calculated count is a lower bound of at least one day and the line reads
-      "Recovery: more than <N> days" instead. If no path recovers within the
-      Year horizon, it prints "Recovery: no recovery within <N> days." instead.
+      A supplied value at or below the historical mean short-circuits to zero
+      recovery days, printed as "Recovery: 0 days", without selecting a
+      starting day or running the simulation. Otherwise the action selects a
+      starting historical day whose aggregated value is at least the supplied
+      value, choosing the qualifying day closest to the supplied value and the
+      earliest date on ties; when none qualifies it starts from the day with
+      the highest observed value. It then draws following days from the same
+      seeded moving-block bootstrap as target mode (20,000 paths, blocks of up
+      to seven days) and measures, for each path, the first later day whose
+      running average including the starting day is less than or equal to the
+      historical mean. The reported result is the most frequent day count among
+      paths that recover, using the smallest count on ties, printed as a single
+      line "Recovery: <N> days" with no forecast table, and the action exits 0.
+      If no path recovers within the Year horizon, it prints "Recovery: no
+      recovery within <N> days."; this takes precedence over the "more than"
+      wording below. When the supplied value is higher than the highest
+      historical daily value and at least one path recovers, the calculated
+      count is a lower bound of at least one day and the line reads "Recovery:
+      more than <N> days" instead.
   - id: predict-recovery-data-rules
     when: >-
       Recovery mode reads completion records for the selected key.
@@ -156,8 +167,9 @@ requirements:
       a "Simulations: 20,000" line and a "Block size: N days" line where N is
       the smaller of seven and the observation count, a table headed "Period",
       "Target value", "P(maintain)", and "MC error" with one row per horizon,
-      and interpretation notes about meeting the target total and MC error
-      being sampling error only.
+      where "Target value" is the target pace multiplied by that horizon's day
+      count, and interpretation notes about meeting the target total and MC
+      error being sampling error only.
 acceptance:
   - id: predict-key-isolated-statistics
     given: >-
@@ -245,9 +257,9 @@ acceptance:
       statistics, Monte Carlo horizons, and MC errors.
   - id: predict-mode-is-required
     given: >-
-      A valid history exists but no mode argument is supplied.
+      A valid history exists but no argument follows the action name.
     when: >-
-      todo.sh predict focus is run.
+      todo.sh predict is run.
     then: >-
       Stderr reports that a mode such as target is required and the exit
       status is 1; no report is printed.
@@ -255,22 +267,34 @@ acceptance:
     given: >-
       A valid history exists.
     when: >-
-      todo.sh predict bogus focus is run.
+      todo.sh predict bogus is run.
     then: >-
       Stderr reports that bogus is not a known mode and names target, baseline,
       and recovery as valid, and the exit status is 1.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-help-alias-precedence
+    given: >-
+      A valid history exists.
+    when: >-
+      todo.sh predict help is run.
+    then: >-
+      Help is printed and the exit status is 0, not an unknown-mode error.
   - id: predict-recovery-reports-modal-days
     given: >-
-      A valid history exists, its mean is M, and a supplied value is reached by
-      at least one historical day.
+      A valid history exists, its mean is M, a supplied value above M is
+      reached by at least one historical day, and at least one simulated path
+      recovers within the Year horizon.
     when: >-
       todo.sh predict recovery focus <value> is run.
     then: >-
       A single "Recovery: <N> days" line is printed, where N is the most
-      frequent simulated first day at which the running average is at most M.
+      frequent simulated first later day at which the running average is at
+      most M.
   - id: predict-recovery-falls-back-to-max-day
     given: >-
-      The supplied value exceeds every historical daily value for focus.
+      The supplied value exceeds every historical daily value for focus, and at
+      least one simulated path recovers within the Year horizon.
     when: >-
       todo.sh predict recovery focus <value> is run.
     then: >-
@@ -280,12 +304,24 @@ acceptance:
   # AI-generated documentation (not reviewed by a human)
   - id: predict-recovery-max-value-needs-at-least-one-day
     given: >-
-      The supplied value exceeds every historical daily value for focus, so
-      the highest observed day is used as the starting day.
+      The supplied value exceeds every historical daily value for focus, so the
+      highest observed day is used as the starting day, and at least one
+      simulated path recovers within the Year horizon.
     when: >-
       todo.sh predict recovery focus <value> is run.
     then: >-
       The output is "Recovery: more than <N> days" where N is at least 1.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-recovery-no-recovery-wins-over-more-than
+    given: >-
+      The supplied value exceeds every historical daily value for focus, and no
+      simulated path recovers within the Year horizon.
+    when: >-
+      todo.sh predict recovery focus <value> is run.
+    then: >-
+      The output is "Recovery: no recovery within <N> days." and the exit
+      status is 0, not "Recovery: more than <N> days".
 
   # AI-generated documentation (not reviewed by a human)
   - id: predict-recovery-at-or-below-mean-is-zero
@@ -334,7 +370,8 @@ acceptance:
     when: >-
       todo.sh predict target <key> B is run.
     then: >-
-      All four horizons report 100.0 percent P(maintain) with 0.00 pp MC error.
+      All four horizons report 100.0 percent P(maintain) (a rounded display)
+      with 0.00 pp MC error.
   - id: predict-baseline-key-isolation
     given: >-
       Completed records contain focus values and higher stress values, and no
