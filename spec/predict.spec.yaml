@@ -8,8 +8,10 @@ id: predict
 purpose: >-
   Specify the predict action, which summarizes one numeric metadata key from
   completed tasks in done.txt and estimates the chance of maintaining a chosen
-  daily average over calendar horizons. The requirements describe the action
-  as currently implemented and tested.
+  daily average over calendar horizons. Monte Carlo simulation is mandatory for
+  the forecast: the report must not use a closed-form formula or a single
+  historical path. The remaining requirements describe the action as currently
+  implemented and tested.
 
 # AI-generated documentation (not reviewed by a human)
 requirements:
@@ -79,16 +81,21 @@ requirements:
   # AI-generated documentation (not reviewed by a human)
   - id: predict-bootstrap-forecast
     when: >-
-      The forecast table is computed.
+      A prediction report is produced; its probabilities MUST be derived from
+      Monte Carlo simulation rather than a closed-form formula or a single
+      historical path.
     then: >-
-      Twenty thousand simulations draw daily histories in contiguous blocks of
-      up to seven observed days with wraparound and a fixed seed of zero. For
-      Day (1 day), Week (7 days), Month (calendar days in the current month),
-      and Year (calendar days in the current year), the probability is the
-      fraction of simulated paths whose running total reaches the target pace
-      multiplied by the elapsed day count. The reported MC error is the
-      binomial sampling error sqrt(p(1-p)/simulations), and identical inputs
-      produce identical output.
+      Exactly 20,000 simulated paths are generated with a fixed seed of zero by
+      resampling observed daily values in contiguous blocks of up to seven days
+      with wraparound, so every historical day can start a block. The four
+      horizons Day (1 day), Week (7 days), Month (calendar days in the current
+      month), and Year (calendar days in the current year) share each simulated
+      path. For each horizon, probability is the fraction of paths whose running
+      total reaches the target pace multiplied by the elapsed day count, so
+      extra effort on one day can compensate for an earlier shortfall. Reported
+      MC error is the binomial sampling error sqrt(p(1-p)/20,000), representing
+      simulation noise only, and identical inputs produce identical
+      probabilities and errors.
 
   # AI-generated documentation (not reviewed by a human)
   - id: predict-report-content
@@ -96,9 +103,11 @@ requirements:
       A successful report is printed.
     then: >-
       It contains a "Pace Maintainability Report" title, the statistics lines,
-      a Period/Target effort/P(maintain)/MC error table with one row per
-      horizon, and interpretation notes stating that probability means meeting
-      or exceeding the target total and that MC error is sampling error only.
+      a "Simulations: 20,000" line and a "Block size: N days" line where N is
+      the smaller of seven and the observation count, a Period/Target
+      effort/P(maintain)/MC error table with one row per horizon, and
+      interpretation notes stating that probability means meeting or exceeding
+      the target total and that MC error is sampling error only.
 
 # AI-generated documentation (not reviewed by a human)
 acceptance:
@@ -152,3 +161,35 @@ acceptance:
     then: >-
       Both reports are byte-for-byte identical, including all probabilities
       and MC errors.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-monte-carlo-is-observable
+    given: >-
+      A valid effort history exists.
+    when: >-
+      todo.sh predict effort is run.
+    then: >-
+      The report states "Simulations: 20,000" and a block size no larger than
+      seven days, and the P(maintain) column contains simulation-derived
+      percentages for all four horizons.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-certain-and-impossible-targets
+    given: >-
+      A valid history exists and two runs use target paces at or below the
+      smallest observation and above every observation, respectively.
+    when: >-
+      todo.sh predict effort <low> and todo.sh predict effort <high> are run.
+    then: >-
+      The low target reports 100.0% with 0.00 pp MC error for every horizon,
+      and the high target reports 0.0% with 0.00 pp MC error for every horizon.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-short-history-supports-long-horizons
+    given: >-
+      DONE_FILE contains only one valid observation for the selected key.
+    when: >-
+      todo.sh predict effort is run.
+    then: >-
+      All four horizon rows are printed, the reported block size is one day,
+      and repeated runs remain byte-for-byte identical.
