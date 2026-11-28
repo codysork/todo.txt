@@ -78,8 +78,11 @@ requirements:
       less than or equal to the historical mean. The reported result is the
       most frequent day count across paths, using the smallest count on ties,
       printed as a single line "Recovery: <N> days" with no forecast table, and
-      the action exits 0. If no path recovers within the Year horizon, it prints
-      "Recovery: no recovery within <N> days." instead.
+      the action exits 0. When the supplied value is higher than the highest
+      historical daily value, the calculated count is a lower bound and the
+      line reads "Recovery: more than <N> days" instead. If no path recovers
+      within the Year horizon, it prints "Recovery: no recovery within <N>
+      days." instead.
 
   # AI-generated documentation (not reviewed by a human)
   - id: predict-recovery-data-rules
@@ -290,8 +293,8 @@ acceptance:
     when: >-
       todo.sh predict recovery focus <value> is run.
     then: >-
-      The action exits 0 and reports a recovery count based on the highest
-      observed day rather than an error.
+      The action exits 0 and reports "Recovery: more than <N> days" based on
+      the highest observed day rather than an error.
 
   # AI-generated documentation (not reviewed by a human)
   - id: predict-recovery-key-isolation
