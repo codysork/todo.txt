@@ -4,10 +4,11 @@ A collection of configuration, add-ons, and filters for [todo.txt-cli](https://g
 
 ## Features
 
+<!-- AI-generated documentation (not reviewed by a human) -->
 - **Threshold scheduling:** Set a `t:` date to keep a task hidden until it is ready to appear. Tasks with future thresholds are hidden from the normal list and can be shown with `todo.sh -x`.
 - **Recurring routines:** Tag tasks with a frequency such as `@Routine:weekly` and set their next threshold.
 - **Task overview:** Combine configured todo.sh views, suppress duplicates, and optionally show tasks not covered by those views.
-- **Completion tracking:** `pace` reports physical, mental, and stress scores together in one table; `predict KEY` reports statistics for a selected numeric task-metadata field.
+- **Completion tracking:** `pace` reports physical, mental, and stress scores together in one table; `predict` reports statistics, baseline, and recovery forecasts for a selected numeric task-metadata field.
 - **Task management:** Add tasks through a desktop dialog with `popup`, repeat completed tasks with `repeat`, and view due tasks with `today`.
 - **Kanban groundwork:** `kanban` defines board contexts and computes layout dimensions, but does not yet retrieve tasks or draw the board.
 
@@ -49,6 +50,7 @@ chain and is returned to the action.
 
 ## Add-ons
 
+<!-- AI-generated documentation (not reviewed by a human) -->
 | Command | What it does |
 | --- | --- |
 | `todo.sh today [TERM...]` | Shows tasks whose threshold is today or earlier |
@@ -62,7 +64,9 @@ chain and is returned to the action.
 | `todo.sh overview` | Displays the configured task views, suppresses repeated task numbers by default, and shows remaining active tasks by default |
 | `todo.sh repeat ITEM [DATE\|DAY]` | Completes and re-adds a task, optionally rescheduling its threshold |
 | `todo.sh pace [daily\|weekly\|monthly\|annual] [count]` | Reports physical, mental, and stress totals and daily rates together in one table |
-| `todo.sh predict KEY [value]` | Reports statistics for a numeric metadata key and its probability of meeting a target daily average (default: historical mean) |
+| `todo.sh predict target KEY [value]` | Reports history statistics and Monte Carlo probabilities for meeting a target daily average (default: historical mean) |
+| `todo.sh predict baseline KEY` | Reports the highest daily value guaranteed every day |
+| `todo.sh predict recovery KEY value` | Estimates the most likely days for the running average to return to the historical mean |
 | `todo.sh popup` | Opens a dialog to add a task |
 | `todo.sh kanban` | Kanban scaffold with configured contexts and layout calculations; task retrieval and board rendering are not implemented yet |
 
@@ -92,27 +96,30 @@ given, then runs `after_add` hooks with the original and new task numbers.
 The configured schedule hooks validate the date before the repeat and apply
 the threshold to the new task afterwards.
 
-### How `predict KEY` summarizes task metadata
+<!-- AI-generated documentation (not reviewed by a human) -->
+### How `predict` summarizes task metadata
 
-`predict KEY [value]` selects one exact numeric `key:value` field from completed tasks
-in `done.txt`. Values for other keys are kept separate. Completed records must
-have a valid date on or before today; numeric values for the selected key are
-aggregated by completion date. Metadata with nonnumeric date or text values is
-skipped. Malformed numeric values, duplicate occurrences of the selected key
-on one task line, NaN, and infinity are reported as errors. A key with no valid
-observations reports no data rather than fabricated zero statistics.
+`predict target KEY [value]` selects one exact numeric `key:value` field from
+completed tasks in `done.txt`. Values for other keys are kept separate.
+Completed records must have a valid date on or before today; numeric values for
+the selected key are aggregated by completion date. Metadata with nonnumeric
+date or text values is skipped. Malformed numeric values, duplicate occurrences
+of the selected key on one task line, NaN, and infinity are reported as errors.
+A key with no valid observations reports no data rather than fabricated zero
+statistics.
 
-An optional second argument sets the target daily average; without it the
-historical mean is used. The bootstrap probability is the chance that the total
-over each period reaches that target, so `predict effort 3.5` checks maintaining
-an average of 3.5 effort/day.
+An optional value sets the target daily average; without it the historical mean
+is used. The bootstrap probability is the chance that the total over each period
+reaches that target, so `predict target effort 3.5` checks maintaining an
+average of 3.5 effort/day. `predict baseline KEY` prints the highest daily value
+guaranteed every day, and `predict recovery KEY value` estimates the most likely
+number of days for the running average to return to the historical mean.
 
-The report includes the selected key's average, median, population deviation,
-zero frequency, and number of observation days. It also retains the moving-block
-bootstrap forecast over calendar periods, using the historical mean as its
-default target pace. The bootstrap samples daily observations in contiguous
-blocks of up to seven entries; dates with no valid selected-key observation are
-not inserted as zero-effort days.
+The target report includes the selected key's average, median, population
+deviation, zero frequency, and number of observation days. It also includes the
+moving-block bootstrap forecast over calendar periods. The bootstrap samples
+daily observations in contiguous blocks of up to seven entries; dates with no
+valid selected-key observation are not inserted as zero-value days.
 
 ## Task conventions
 

@@ -3,14 +3,17 @@
 # @file predict (todo.sh action)
 # @author Cody Sork <codysork@gmail.com> with help from AI agents
 # @created 2026-11-21
-# @modified 2026-11-23
-# @description Report historical statistics for one numeric task metadata key.
+# @modified 2026-11-27
+# @description Report statistics and Monte Carlo forecasts for one numeric key.
 #
 # Usage:
-#   todo.sh predict KEY [value]
+#   todo.sh predict target KEY [value]
+#   todo.sh predict baseline KEY
+#   todo.sh predict recovery KEY value
 #
-#   KEY        numeric key:value field to summarize (for example effort)
-#   value      target daily average to check (default: historical mean)
+#   target     show history statistics and target-pace probabilities
+#   baseline   show the highest daily value guaranteed every day
+#   recovery   estimate days to return to the historical mean
 #
 # Dependencies: Python standard library only.
 
@@ -38,6 +41,7 @@ BLOCK_DAYS = 7
 RANDOM_SEED = 0
 
 HELP_WORDS = ("usage", "help", "-h", "--help")
+MODES = ("target", "baseline", "recovery")
 
 METADATA_KEY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 NUMBER_RE = re.compile(
@@ -52,13 +56,15 @@ DATE_VALUE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 
 def usage():
     print("  predict")
-    print("    Report historical statistics for one numeric task metadata key.")
-    print("      KEY        key to summarize, such as effort or physical-exertion")
-    print("      value      target daily average (default: historical mean)")
+    print("    Report statistics and forecasts for one numeric metadata key.")
+    print("      target KEY [value]   statistics and target-pace probabilities")
+    print("      baseline KEY         highest daily value guaranteed every day")
+    print("      recovery KEY value   days to return to the historical mean")
     print("      Examples:")
-    print("        todo.sh predict effort")
-    print("        todo.sh predict effort 3.5")
-    print("        todo.sh predict physical-exertion 3.0")
+    print("        todo.sh predict target effort")
+    print("        todo.sh predict target effort 3.5")
+    print("        todo.sh predict baseline effort")
+    print("        todo.sh predict recovery effort 5")
 
 def fail(message):
     print(f"Error: {message}", file=sys.stderr)
@@ -242,6 +248,27 @@ def simulate_probabilities(daily, horizons, pace, simulations, rng):
         results[days] = probability, error
     return results
 
+def simulate_recovery(daily, start_value, mean, horizon_days, simulations, rng):
+    """Return the most common first recovery day, or None if none recovers."""
+    block_size = min(BLOCK_DAYS, len(daily))
+    counts = {}
+
+    for _ in range(simulations):
+        total = start_value
+        elapsed = 1
+        for value in bootstrap_days(daily, horizon_days, block_size, rng):
+            total += value
+            elapsed += 1
+            if total <= mean * elapsed:
+                recovery_days = elapsed - 1
+                counts[recovery_days] = counts.get(recovery_days, 0) + 1
+                break
+
+    if not counts:
+        return None
+    most_common = max(counts.values())
+    return min(day for day, count in counts.items() if count == most_common)
+
 
 #----------------------------------------------------------------------------
 # Reporting
@@ -273,7 +300,7 @@ def print_report(history, pace):
     print(f"Block size:         {min(BLOCK_DAYS, history.span)} days")
     print()
 
-    print(f"{'Period':<9s} {'Target effort':>15s} "
+    print(f"{'Period':<9s} {'Target value':>15s} "
           f"{'P(maintain)':>15s} {'MC error':>12s}")
 
     print("-" * 55)
@@ -296,8 +323,8 @@ def print_report(history, pace):
 
     print()
     print("Interpretation:")
-    print("  Probability = chance of meeting or exceeding target")
-    print("  total effort (target pace × calendar days) over the period.")
+    print("  Probability = chance of meeting or exceeding the")
+    print("  target total (target pace × calendar days) over the period.")
     print("  Extra effort can compensate for a lower-effort day.")
     print()
     print("  MC error = Monte Carlo sampling error only.")
@@ -308,30 +335,74 @@ def print_report(history, pace):
 # Modes
 #----------------------------------------------------------------------------
 
-def parse_target(value):
-    """Validate an optional target pace for the selected key."""
+def parse_finite_number(value, label):
+    """Return a finite float parsed from a command-line value."""
     try:
-        target = float(value)
+        number = float(value)
     except ValueError:
-        fail(f"Target must be a number: {value}")
-    if math.isnan(target):
-        fail(f"Target must be a finite number: {value}")
-    if math.isinf(target):
-        fail(f"Target must be finite: {value}")
-    return target
+        fail(f"{label} must be a number: {value}")
+    if math.isnan(number):
+        fail(f"{label} must be a finite number: {value}")
+    if math.isinf(number):
+        fail(f"{label} must be finite: {value}")
+    return number
 
-def run_key_statistics(args):
-    """Load a key, then report its statistics and optional target pace."""
-    if len(args) > 2:
-        fail("Usage: todo.sh predict KEY [value] (too many arguments).")
+def recovery_start_value(history, value):
+    """Return the daily value to start recovery from."""
+    qualifying = [observed for observed in history.daily if observed >= value]
+    if qualifying:
+        return min(qualifying)
+    return max(history.daily)
 
-    key = args[0]
-    if not METADATA_KEY_RE.fullmatch(key):
-        fail(f"Invalid metadata key: {key}")
+def run_target(args):
+    """Report history statistics and target-pace probabilities."""
+    if not args:
+        fail("Usage: todo.sh predict target KEY [value] (missing key).")
 
-    history = parse_done(DONE_FILE, key)
-    target = parse_target(args[1]) if len(args) == 2 else history.mean
+    history = parse_done(DONE_FILE, args[0])
+    if len(args) > 1:
+        target = parse_finite_number(args[1], "Target")
+    else:
+        target = history.mean
     print_report(history, target)
+
+def run_baseline(args):
+    """Report the highest daily value guaranteed every day."""
+    if not args:
+        fail("Usage: todo.sh predict baseline KEY (missing key).")
+    if len(args) > 1:
+        fail("Usage: todo.sh predict baseline KEY (baseline takes no value).")
+
+    history = parse_done(DONE_FILE, args[0])
+    print(f"Baseline: {min(history.daily):.2f} {history.key}/day")
+
+def run_recovery(args):
+    """Report the most likely days to return to the historical mean."""
+    if not args:
+        fail("Usage: todo.sh predict recovery KEY value (missing key).")
+    if len(args) < 2:
+        fail("Usage: todo.sh predict recovery KEY value (missing value).")
+
+    history = parse_done(DONE_FILE, args[0])
+    value = parse_finite_number(args[1], "Recovery value")
+    if value <= history.mean:
+        print("Recovery: 0 days")
+        return
+
+    start_value = recovery_start_value(history, value)
+    horizon_days = year_length(TODAY)
+    rng = random.Random(RANDOM_SEED)
+    recovery_days = simulate_recovery(
+        history.daily, start_value, history.mean, horizon_days,
+        SIMULATIONS, rng,
+    )
+
+    if recovery_days is None:
+        print(f"Recovery: no recovery within {horizon_days} days.")
+    elif value > max(history.daily):
+        print(f"Recovery: more than {recovery_days} days")
+    else:
+        print(f"Recovery: {recovery_days} days")
 
 #----------------------------------------------------------------------------
 # Main
@@ -349,9 +420,28 @@ def main():
         return 0
 
     if not args:
-        fail("Usage: todo.sh predict KEY (name one numeric metadata key).")
+        fail(
+            "Usage: todo.sh predict <mode> KEY [value] "
+            "(name a mode such as target, baseline, or recovery)."
+        )
 
-    run_key_statistics(args)
+    if len(args) > 3:
+        fail("Usage: todo.sh predict <mode> KEY [value] (too many arguments).")
+
+    mode = args[0].lower()
+    handlers = {
+        "target": run_target,
+        "baseline": run_baseline,
+        "recovery": run_recovery,
+    }
+    handler = handlers.get(mode)
+    if handler is None:
+        fail(
+            f"Unknown mode '{args[0]}'. "
+            f"Valid modes are {', '.join(MODES[:-1])}, and {MODES[-1]}."
+        )
+
+    handler(args[1:])
     return 0
 
 if __name__ == "__main__":
