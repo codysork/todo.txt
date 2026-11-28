@@ -25,8 +25,6 @@ requirements:
       such as target, baseline, or recovery)." on stderr and exits 1; a fourth argument
       prints a too-many-arguments error and exits 1. A leading "predict"
       argument passed by todo.sh is stripped before parsing.
-
-  # AI-generated documentation (not reviewed by a human)
   - id: predict-modes
     when: >-
       A mode argument is supplied as the first argument after the action name.
@@ -38,8 +36,6 @@ requirements:
       after a day at a supplied value. Any other mode is rejected with a usage
       error on stderr and exit status 1, and the error names target, baseline,
       and recovery as valid modes.
-
-  # AI-generated documentation (not reviewed by a human)
   - id: predict-baseline-mode
     when: >-
       predict baseline is invoked with a metadata key and no third argument.
@@ -51,8 +47,6 @@ requirements:
       every horizon. It prints a single line "Baseline: <N.NN> <key>/day" and
       no forecast table, then exits 0. A third argument is a usage error with
       exit status 1.
-
-  # AI-generated documentation (not reviewed by a human)
   - id: predict-baseline-data-rules
     when: >-
       Baseline mode reads completion records for the selected key.
@@ -62,8 +56,6 @@ requirements:
       separate and never inserting zero days for dates with no observation.
       An invalid key, unreadable done file, or key with no valid observations
       produces the same error and exit status as target mode.
-
-  # AI-generated documentation (not reviewed by a human)
   - id: predict-recovery-mode
     when: >-
       predict recovery is invoked with a metadata key and a numeric value.
@@ -78,13 +70,12 @@ requirements:
       less than or equal to the historical mean. The reported result is the
       most frequent day count across paths, using the smallest count on ties,
       printed as a single line "Recovery: <N> days" with no forecast table, and
-      the action exits 0. When the supplied value is higher than the highest
-      historical daily value, the calculated count is a lower bound and the
-      line reads "Recovery: more than <N> days" instead. If no path recovers
-      within the Year horizon, it prints "Recovery: no recovery within <N>
-      days." instead.
-
-  # AI-generated documentation (not reviewed by a human)
+      the action exits 0. A supplied value at or below the historical mean
+      returns zero recovery days, printed as "Recovery: 0 days". When the
+      supplied value is higher than the highest historical daily value, the
+      calculated count is a lower bound of at least one day and the line reads
+      "Recovery: more than <N> days" instead. If no path recovers within the
+      Year horizon, it prints "Recovery: no recovery within <N> days." instead.
   - id: predict-recovery-data-rules
     when: >-
       Recovery mode reads completion records for the selected key.
@@ -244,8 +235,6 @@ acceptance:
     then: >-
       The action exits 0, the report names physical-exertion as the selected
       key, and its statistics come only from that key's values.
-
-  # AI-generated documentation (not reviewed by a human)
   - id: predict-target-mode-runs-forecast
     given: >-
       A valid history exists for an arbitrary key and the target mode is named.
@@ -254,8 +243,6 @@ acceptance:
     then: >-
       The full Pace Maintainability Report is printed, including history
       statistics, Monte Carlo horizons, and MC errors.
-
-  # AI-generated documentation (not reviewed by a human)
   - id: predict-mode-is-required
     given: >-
       A valid history exists but no mode argument is supplied.
@@ -264,8 +251,6 @@ acceptance:
     then: >-
       Stderr reports that a mode such as target is required and the exit
       status is 1; no report is printed.
-
-  # AI-generated documentation (not reviewed by a human)
   - id: predict-unknown-mode-rejected
     given: >-
       A valid history exists.
@@ -274,8 +259,6 @@ acceptance:
     then: >-
       Stderr reports that bogus is not a known mode and names target, baseline,
       and recovery as valid, and the exit status is 1.
-
-  # AI-generated documentation (not reviewed by a human)
   - id: predict-recovery-reports-modal-days
     given: >-
       A valid history exists, its mean is M, and a supplied value is reached by
@@ -285,8 +268,6 @@ acceptance:
     then: >-
       A single "Recovery: <N> days" line is printed, where N is the most
       frequent simulated first day at which the running average is at most M.
-
-  # AI-generated documentation (not reviewed by a human)
   - id: predict-recovery-falls-back-to-max-day
     given: >-
       The supplied value exceeds every historical daily value for focus.
@@ -297,6 +278,24 @@ acceptance:
       the highest observed day rather than an error.
 
   # AI-generated documentation (not reviewed by a human)
+  - id: predict-recovery-max-value-needs-at-least-one-day
+    given: >-
+      The supplied value exceeds every historical daily value for focus, so
+      the highest observed day is used as the starting day.
+    when: >-
+      todo.sh predict recovery focus <value> is run.
+    then: >-
+      The output is "Recovery: more than <N> days" where N is at least 1.
+
+  # AI-generated documentation (not reviewed by a human)
+  - id: predict-recovery-at-or-below-mean-is-zero
+    given: >-
+      The historical mean for focus is M and the supplied value is at or below
+      M.
+    when: >-
+      todo.sh predict recovery focus M is run.
+    then: >-
+      The output is "Recovery: 0 days" and the exit status is 0.
   - id: predict-recovery-key-isolation
     given: >-
       Records contain focus values and different stress values, and no valid
@@ -307,8 +306,6 @@ acceptance:
     then: >-
       The recovery result is computed from focus history only, and the missing
       key reports no data with exit status 1.
-
-  # AI-generated documentation (not reviewed by a human)
   - id: predict-recovery-requires-value
     given: >-
       A valid history exists for focus.
@@ -316,8 +313,6 @@ acceptance:
       todo.sh predict recovery focus is run.
     then: >-
       Stderr reports a missing value usage error and the exit status is 1.
-
-  # AI-generated documentation (not reviewed by a human)
   - id: predict-recovery-is-deterministic
     given: >-
       The same DONE_FILE contents, key, and value.
@@ -325,8 +320,6 @@ acceptance:
       todo.sh predict recovery focus 5 is run twice.
     then: >-
       Both outputs are byte-for-byte identical.
-
-  # AI-generated documentation (not reviewed by a human)
   - id: predict-baseline-equals-minimum-day
     given: >-
       The valid daily values for focus are 2, 5, and 9.
@@ -335,8 +328,6 @@ acceptance:
     then: >-
       The only report line is "Baseline: 2.00 focus/day", with no Pace
       Maintainability Report or horizon table.
-
-  # AI-generated documentation (not reviewed by a human)
   - id: predict-baseline-guarantees-every-horizon
     given: >-
       Baseline mode reports B for a key with valid daily values.
@@ -344,8 +335,6 @@ acceptance:
       todo.sh predict target <key> B is run.
     then: >-
       All four horizons report 100.0 percent P(maintain) with 0.00 pp MC error.
-
-  # AI-generated documentation (not reviewed by a human)
   - id: predict-baseline-key-isolation
     given: >-
       Completed records contain focus values and higher stress values, and no
@@ -356,8 +345,6 @@ acceptance:
     then: >-
       The first baseline is computed from focus values only, and the second
       reports no data for missing with exit status 1.
-
-  # AI-generated documentation (not reviewed by a human)
   - id: predict-baseline-rejects-value-argument
     given: >-
       A valid history exists for focus.
